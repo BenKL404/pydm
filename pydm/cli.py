@@ -57,6 +57,7 @@ def main(argv=None):
                    help="qualité pour les vidéos de streaming")
     p.add_argument("--cookies", default="Aucun", choices=BROWSERS,
                    help="utiliser les cookies de ce navigateur (vidéos nécessitant votre compte)")
+    p.add_argument("--minimized", action="store_true", help="démarrer réduit dans la barre système")
     a = p.parse_args(argv)
     if a.url:
         sys.exit(run_cli(a.url, a.output, a.connections, a.qualite, a.cookies))

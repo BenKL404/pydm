@@ -40,6 +40,16 @@ jobs:
       - name: ShellCheck
         run: shellcheck install.sh
 
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install into a temporary HOME
+        run: |
+          export HOME="$(mktemp -d)" PYDM_SKIP_PIP=1
+          sh install.sh
+          "$HOME/.local/bin/pydm" --help
+
   extension:
     runs-on: ubuntu-latest
     steps:

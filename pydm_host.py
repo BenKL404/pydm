@@ -17,7 +17,7 @@ import time
 
 CONFIG_DIR = os.environ.get("PYDM_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".config", "pydm")
 SOCKET_PATH = os.path.join(CONFIG_DIR, "pydm.sock")
-HERE = os.path.dirname(os.path.realpath(__file__))
+LAUNCHER = os.path.join(os.path.expanduser("~"), ".local", "bin", "pydm")
 
 
 def read_message():
@@ -45,7 +45,9 @@ def forward(msg):
                 return json.loads(s.makefile().readline() or "{}")
         except (FileNotFoundError, ConnectionRefusedError):
             if not launched:
-                subprocess.Popen([sys.executable, "-m", "pydm"], cwd=HERE, start_new_session=True,
+                if not os.path.exists(LAUNCHER):
+                    return {"ok": False, "error": "PyDM n'est pas installé (lancez install.sh)"}
+                subprocess.Popen([LAUNCHER, "--minimized"], start_new_session=True,
                                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                  stderr=subprocess.DEVNULL)
                 launched = True

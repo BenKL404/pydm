@@ -3,6 +3,6 @@ Type=Application
 Name=PyDM
 Comment=Gestionnaire de téléchargement multi-connexions
 Exec=pydm
-Icon=folder-download
+Icon=pydm
 Terminal=false
 Categories=Network;FileTransfer;
