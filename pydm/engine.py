@@ -3,6 +3,7 @@
 """Moteur de téléchargement : fichiers directs multi-connexions et vidéos via yt-dlp."""
 import json
 import os
+from datetime import datetime
 import re
 import shutil
 import threading
@@ -99,6 +100,7 @@ class Download(_Task):
         self.status = "En attente"
         self.error = None
         self.speed = 0.0
+        self.added = time.time()
         self.lock = threading.Lock()
         self.stop_evt = threading.Event()
         self._thread = None
@@ -303,6 +305,7 @@ class VideoDownload(_Task):
         self.done = 0
         self.speed = 0.0
         self.error = None
+        self.added = time.time()
         self.stop_evt = threading.Event()
         self.status = "Terminé" if name and os.path.exists(self.path) else (
             "En pause" if name else "En attente")
@@ -414,3 +417,26 @@ def make_download(url, folder, parts=8, quality="Meilleure", browser="Aucun",
     if (kind == "video" and have_ytdlp()) or (kind == "auto" and looks_like_video(url, headers)):
         return VideoDownload(url, folder, parts, quality=quality, browser=browser, headers=headers)
     return Download(url, folder, parts, headers=headers, name_hint=filename)
+
+
+def entry_from_task(t):
+    """Entrée de session (format JSON) décrivant la tâche."""
+    e = {"url": t.url, "folder": t.folder, "parts": t.parts, "name": t.name, "headers": t.headers,
+         "added": datetime.fromtimestamp(t.added).isoformat(timespec="seconds")}
+    if isinstance(t, VideoDownload):
+        e.update(kind="video", quality=t.quality, browser=t.browser)
+    return e
+
+
+def task_from_entry(e):
+    """Recrée la tâche d'une entrée de session (les anciennes entrées n'ont pas « added »)."""
+    if e.get("kind") == "video":
+        t = VideoDownload(e["url"], e["folder"], e.get("parts", 8), e.get("name"),
+                          e.get("quality", "Meilleure"), e.get("browser", "Aucun"), e.get("headers"))
+    else:
+        t = Download(e["url"], e["folder"], e.get("parts", 8), e.get("name"), e.get("headers"))
+    try:
+        t.added = datetime.fromisoformat(e["added"]).timestamp()
+    except (KeyError, TypeError, ValueError):
+        pass
+    return t

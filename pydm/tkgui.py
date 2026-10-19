@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Kokou Bernard KPEDZI
 """Interface Tkinter (provisoire, remplacée par l'interface Qt)."""
-import json
 import os
 import queue
 import re
@@ -10,12 +9,11 @@ import subprocess
 import sys
 import threading
 
-from .engine import BROWSERS, QUALITIES, Download, VideoDownload, have_ytdlp, make_download
-from .ipc import CONFIG_DIR, SOCKET_PATH, start_ipc
+from . import store
+from .engine import (BROWSERS, QUALITIES, Download, entry_from_task, have_ytdlp, make_download,
+                     task_from_entry)
+from .ipc import SOCKET_PATH, start_ipc
 from .util import human, human_time
-
-SESSION_FILE = os.path.join(CONFIG_DIR, "session.json")
-
 
 def run(default_dir, parts):
     import tkinter as tk
@@ -85,29 +83,11 @@ def run(default_dir, parts):
         subprocess.Popen(["xdg-open", folder])
 
     def save_session():
-        os.makedirs(CONFIG_DIR, exist_ok=True)
-        data = []
-        for d in list(items.values()):
-            e = {"url": d.url, "folder": d.folder, "parts": d.parts, "name": d.name, "headers": d.headers}
-            if isinstance(d, VideoDownload):
-                e.update(kind="video", quality=d.quality, browser=d.browser)
-            data.append(e)
-        fd = os.open(SESSION_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)  # contient des cookies
-        with os.fdopen(fd, "w") as f:
-            json.dump(data, f, indent=1)
+        store.save_session([entry_from_task(d) for d in list(items.values())])
 
     def load_session():
-        try:
-            with open(SESSION_FILE) as f:
-                data = json.load(f)
-        except (OSError, ValueError):
-            return
-        for e in data:
-            if e.get("kind") == "video":
-                d = VideoDownload(e["url"], e["folder"], e.get("parts", 8), e.get("name"),
-                                  e.get("quality", "Meilleure"), e.get("browser", "Aucun"), e.get("headers"))
-            else:
-                d = Download(e["url"], e["folder"], e.get("parts", 8), e.get("name"), e.get("headers"))
+        for e in store.load_session():
+            d = task_from_entry(e)
             if d.status == "En attente":
                 d.status = "En pause"
             items[tree.insert("", "end", values=("…",) * 6)] = d

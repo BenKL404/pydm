@@ -15,10 +15,10 @@ flux HLS/DASH…) via yt-dlp s'il est installé : pip install -U yt-dlp
 Aucune autre dépendance hors bibliothèque standard (Tkinter pour l'interface).
 """
 import argparse
-import os
 import sys
 import time
 
+from . import store
 from .engine import BROWSERS, QUALITIES, Download, make_download
 from .ipc import instance_running
 from .util import human, human_time
@@ -48,15 +48,10 @@ def run_cli(url, folder, parts, quality="Meilleure", browser="Aucun"):
     return 0 if d.finished else 1
 
 
-def default_folder():
-    fr = os.path.expanduser("~/Téléchargements")
-    return fr if os.path.isdir(fr) else os.path.expanduser("~/Downloads")
-
-
 def main(argv=None):
     p = argparse.ArgumentParser(prog="pydm", description="PyDM - téléchargements multi-connexions")
     p.add_argument("url", nargs="?", help="URL à télécharger (sans URL : interface graphique)")
-    p.add_argument("-o", "--output", default=default_folder(), help="dossier de destination")
+    p.add_argument("-o", "--output", default=store.default_folder(), help="dossier de destination")
     p.add_argument("-n", "--connections", type=int, default=8, help="nombre de connexions (défaut 8)")
     p.add_argument("-q", "--qualite", default="Meilleure", choices=list(QUALITIES),
                    help="qualité pour les vidéos de streaming")
