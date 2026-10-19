@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=PyDM
+Comment=Gestionnaire de téléchargement multi-connexions
+Exec=sh -c 'python3 "$HOME/.local/bin/pydm.py"'
+Icon=folder-download
+Terminal=false
+Categories=Network;FileTransfer;

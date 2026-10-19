@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>PyDM</title>
+<style>
+  :root { --bg:#fff; --fg:#202124; --muted:#5f6368; --line:#e3e3e3; --accent:#1a73e8; --ok:#188038; --err:#d93025; --card:#f6f8fc; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#202124; --fg:#e8eaed; --muted:#9aa0a6; --line:#3c4043; --accent:#8ab4f8; --ok:#81c995; --err:#f28b82; --card:#2a2b2e; }
+  }
+  body { margin:0; width:340px; background:var(--bg); color:var(--fg); font:13px/1.4 system-ui, sans-serif; }
+  header { display:flex; align-items:center; gap:8px; padding:12px 14px; border-bottom:1px solid var(--line); }
+  header img { width:22px; height:22px; }
+  header h1 { font-size:15px; margin:0; flex:1; }
+  #status { font-size:12px; color:var(--muted); }
+  #status.ok { color:var(--ok); } #status.err { color:var(--err); }
+  section { padding:10px 14px; border-bottom:1px solid var(--line); }
+  label { display:flex; align-items:center; gap:8px; padding:3px 0; cursor:pointer; }
+  button { font:inherit; border:0; border-radius:6px; padding:8px 10px; cursor:pointer; background:var(--accent); color:var(--bg); font-weight:600; }
+  button.secondary { background:transparent; color:var(--accent); border:1px solid var(--line); }
+  .row { display:flex; gap:8px; }
+  .row button { flex:1; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:0 0 6px; }
+  ul { list-style:none; margin:0; padding:0; max-height:220px; overflow:auto; }
+  li { display:flex; align-items:center; gap:8px; padding:6px 8px; background:var(--card); border-radius:6px; margin-bottom:4px; }
+  li .info { flex:1; min-width:0; }
+  li .name { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  li .meta { color:var(--muted); font-size:11px; }
+  li button { padding:4px 8px; }
+  .empty { color:var(--muted); }
+  #help { display:none; color:var(--err); font-size:12px; }
+  code { background:var(--card); padding:1px 4px; border-radius:4px; }
+</style>
+</head>
+<body>
+  <header>
+    <img src="icons/icon32.png" alt="">
+    <h1>PyDM</h1>
+    <span id="status">Connexion…</span>
+  </header>
+  <section id="help">
+    PyDM n'est pas joignable. Lancez <code>./install.sh</code> dans le dossier de PyDM,
+    puis redémarrez le navigateur.
+  </section>
+  <section class="row">
+    <button id="page">⬇ Vidéo de cette page</button>
+    <button id="open" class="secondary">Ouvrir PyDM</button>
+  </section>
+  <section>
+    <h2>Médias détectés sur cette page</h2>
+    <ul id="media"><li class="empty">Aucun pour l'instant. Lancez la lecture de la vidéo.</li></ul>
+  </section>
+  <section>
+    <label><input type="checkbox" id="intercept"> Intercepter les téléchargements du navigateur</label>
+    <label><input type="checkbox" id="videoButton"> Bouton « Télécharger cette vidéo » sur les lecteurs</label>
+  </section>
+  <script src="popup.js"></script>
+</body>
+</html>
