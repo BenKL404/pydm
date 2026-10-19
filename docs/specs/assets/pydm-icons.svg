@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="408" height="72" viewBox="0 0 408 72">
+  <title>PyDM : planche de référence des icônes (style plein monochrome)</title>
+  <!--
+    Style 3 retenu : glyphe plein (#B) avec pictogramme découpé (#M = couleur du fond).
+    Chaque icône tient dans un carré de 24 x 24. Ligne 1 : barre d'outils
+    (ajouter, reprendre, pause, forcer, retirer, dossier, rechercher, planifier, menu).
+    Ligne 2 : types de fichiers (vidéo, musique, document, archive, programme, autre),
+    chacun avec sa teinte.
+  -->
+  <rect width="408" height="72" fill="#22252b"/>
+  <g fill="#c9ced6">
+    <g transform="translate(8 8)"><circle cx="12" cy="12" r="10"/><path d="M11 7h2v4h4v2h-4v4h-2v-4H7v-2h4z" fill="#22252b"/></g>
+    <g transform="translate(52 8)"><circle cx="12" cy="12" r="10"/><path d="M10 7.8l6.2 4.2-6.2 4.2z" fill="#22252b"/></g>
+    <g transform="translate(96 8)"><circle cx="12" cy="12" r="10"/><rect x="8.6" y="7.8" width="2.4" height="8.4" rx=".8" fill="#22252b"/><rect x="13" y="7.8" width="2.4" height="8.4" rx=".8" fill="#22252b"/></g>
+    <g transform="translate(140 8)"><circle cx="12" cy="12" r="10"/><path d="M6.8 8l5 4-5 4zM12 8l5 4-5 4z" fill="#22252b"/></g>
+    <g transform="translate(184 8)"><path d="M5.5 8h13l-1 12.2a1.6 1.6 0 0 1-1.6 1.5H8.1a1.6 1.6 0 0 1-1.6-1.5z"/><path d="M3.5 4.8h5.2l1-1.6h4.6l1 1.6h5.2v2.2h-17z"/><path d="M9.6 10.5h1.5v8h-1.5zM12.9 10.5h1.5v8h-1.5z" fill="#22252b"/></g>
+    <g transform="translate(228 8)"><path d="M2 6a2 2 0 0 1 2-2h5.2l2.2 2.2H20a2 2 0 0 1 2 2V10H2z"/><path d="M2 9.2h20V18a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z"/></g>
+    <g transform="translate(272 8)"><circle cx="10.5" cy="10.5" r="7.8"/><circle cx="10.5" cy="10.5" r="4.4" fill="none" stroke="#22252b" stroke-width="2.2"/><path d="M15.3 17.4l2.1-2.1 4.7 4.7-2.1 2.1z"/></g>
+    <g transform="translate(316 8)"><circle cx="12" cy="13.2" r="9"/><path d="M11 8h2v4.7l3.1 2-1.1 1.7-4-2.6z" fill="#22252b"/><rect x="9" y="1.4" width="6" height="2.2" rx="1.1"/></g>
+    <g transform="translate(360 8)"><rect x="2" y="3" width="20" height="18" rx="5"/><rect x="6.5" y="7.5" width="11" height="2" rx="1" fill="#22252b"/><rect x="6.5" y="11" width="11" height="2" rx="1" fill="#22252b"/><rect x="6.5" y="14.5" width="11" height="2" rx="1" fill="#22252b"/></g>
+  </g>
+  <g transform="translate(0 40)">
+    <g transform="translate(8 0)" fill="#a78bfa"><rect x="2" y="4" width="20" height="16" rx="3.5"/><path d="M10 8.6l5.2 3.4-5.2 3.4z" fill="#22252b"/></g>
+    <g transform="translate(52 0)" fill="#f472b6"><circle cx="12" cy="12" r="10"/><path d="M10 7.3l6.3-1.6v7.8a2.3 2.3 0 1 1-1.6-2.2V8l-3.1.8v6.4a2.3 2.3 0 1 1-1.6-2.2z" fill="#22252b"/></g>
+    <g transform="translate(96 0)" fill="#60a5fa"><path d="M6 2h8l6 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M14 2l6 6h-6z" fill="#22252b"/><rect x="7.5" y="12" width="9" height="1.8" rx=".9" fill="#22252b"/><rect x="7.5" y="15.6" width="6" height="1.8" rx=".9" fill="#22252b"/></g>
+    <g transform="translate(140 0)" fill="#fbbf24"><rect x="3" y="3" width="18" height="18" rx="3.5"/><path d="M11 3h2v2h-2zM11 7h2v2h-2zM11 11h2v2h-2z" fill="#22252b"/><rect x="9.6" y="14" width="4.8" height="4.6" rx="1.2" fill="#22252b"/></g>
+    <g transform="translate(184 0)" fill="#34d399"><rect x="2" y="4" width="20" height="16" rx="3.5"/><path d="M5.6 11.3l1.1-1.3 3.7 3.2-3.7 3.2-1.1-1.3 2.2-1.9z" fill="#22252b"/><rect x="11.8" y="15.2" width="5.6" height="1.8" rx=".9" fill="#22252b"/></g>
+    <g transform="translate(228 0)" fill="#94a3b8"><path d="M6 2h8l6 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M14 2l6 6h-6z" fill="#22252b"/></g>
+  </g>
+</svg>

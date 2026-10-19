@@ -1,7 +1,12 @@
 # Ordonnanceur PyDM : file d'attente, limite de vitesse, plage horaire
 
-Date : 2026-10-19 · Étape 1 sur 3 de l'évolution « manques à l'usage »
-(étape 2 : catégories automatiques ; étape 3 : notifications et icône de la barre système).
+Date : 2026-10-19 · Devient l'étape 2 de la modernisation décrite dans
+[2026-10-19-interface-qt-design.md](2026-10-19-interface-qt-design.md).
+
+> **Révision prévue avant l'étape 2.** Le moteur (§ 1 à 3, 5, 7, 8) reste valable et ira dans
+> `pydm/scheduler.py`. Les réglages (§ 4) s'ajoutent à `pydm/store.py` créé à l'étape 1.
+> L'interface (§ 6) et les tests (§ 9) seront réécrits pour Qt ; les catégories
+> automatiques sont à l'étape 3, la barre système et les notifications à l'étape 1.
 
 ## Objectif
 
