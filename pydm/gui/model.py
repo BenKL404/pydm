@@ -72,6 +72,12 @@ class DownloadModel(QAbstractTableModel):
             self.endRemoveRows()
         return removed[::-1]
 
+    def replace(self, old, new):
+        row = self._tasks.index(old)
+        self._tasks[row] = new
+        self._snaps[row] = self._snap(new)
+        self.dataChanged.emit(self.index(row, 0), self.index(row, len(COLUMNS) - 1))
+
     def task(self, row):
         return self._tasks[row]
 

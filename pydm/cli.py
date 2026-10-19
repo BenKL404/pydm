@@ -51,21 +51,22 @@ def run_cli(url, folder, parts, quality="Meilleure", browser="Aucun"):
 def main(argv=None):
     p = argparse.ArgumentParser(prog="pydm", description="PyDM - téléchargements multi-connexions")
     p.add_argument("url", nargs="?", help="URL à télécharger (sans URL : interface graphique)")
-    p.add_argument("-o", "--output", default=store.default_folder(), help="dossier de destination")
-    p.add_argument("-n", "--connections", type=int, default=8, help="nombre de connexions (défaut 8)")
+    p.add_argument("-o", "--output", help="dossier de destination (défaut : celui des préférences)")
+    p.add_argument("-n", "--connections", type=int, help="nombre de connexions (défaut : préférences, 8)")
     p.add_argument("-q", "--qualite", default="Meilleure", choices=list(QUALITIES),
                    help="qualité pour les vidéos de streaming")
     p.add_argument("--cookies", default="Aucun", choices=BROWSERS,
                    help="utiliser les cookies de ce navigateur (vidéos nécessitant votre compte)")
     p.add_argument("--minimized", action="store_true", help="démarrer réduit dans la barre système")
     a = p.parse_args(argv)
+    settings = store.load_settings()
     if a.url:
-        sys.exit(run_cli(a.url, a.output, a.connections, a.qualite, a.cookies))
+        sys.exit(run_cli(a.url, a.output or settings["folder"], a.connections or settings["parts"],
+                         a.qualite, a.cookies))
     if instance_running():      # déjà ouvert : on affiche la fenêtre existante
         return
     try:
-        import tkinter  # noqa: F401
+        from .gui import app
     except ImportError:
-        sys.exit("Tkinter manquant : sudo apt install python3-tk   (ou dnf install python3-tkinter)")
-    from . import tkgui
-    tkgui.run(a.output, a.connections)
+        sys.exit("Interface indisponible : PySide6 n'est pas installé. Relancez ./install.sh")
+    sys.exit(app.run(settings, a.output, a.connections, a.minimized))

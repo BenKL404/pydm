@@ -97,6 +97,8 @@ STYLE = """
 QToolButton {{ border: none; border-radius: 6px; padding: 5px; }}
 QToolButton:hover {{ background: {border}; }}
 QToolButton:disabled {{ background: transparent; }}
+QToolButton::menu-indicator {{ image: none; width: 0; }}
+QFrame#header {{ border-bottom: 1px solid {border}; }}
 QLineEdit, QComboBox {{ border: 1px solid {border}; border-radius: 6px; padding: 5px 8px;
     background: {base}; }}
 QLineEdit:focus, QComboBox:focus {{ border-color: {accent}; }}
@@ -108,7 +110,8 @@ QTableView {{ border: none; gridline-color: transparent; selection-background-co
 QHeaderView::section {{ background: {window}; color: {muted}; border: none;
     border-bottom: 1px solid {border}; padding: 5px 8px; }}
 QSplitter::handle {{ background: {border}; }}
-QStatusBar {{ color: {muted}; }}
+QStatusBar {{ color: {muted}; padding-left: 8px; }}
+QStatusBar::item {{ border: none; }}
 QToolTip {{ border: 1px solid {border}; border-radius: 4px; padding: 4px 6px; }}
 """
 

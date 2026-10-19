@@ -86,6 +86,17 @@ class ModelTest(unittest.TestCase):
         self.model.refresh()
         self.assertEqual(rows, [])
 
+    def test_remplacer(self):
+        old, new = FakeTask("analyse"), FakeTask("vrai.iso", size=10)
+        self.model.add(FakeTask("autre"))
+        self.model.add(old)
+        rows = []
+        self.model.dataChanged.connect(lambda tl, br, *_: rows.append(tl.row()))
+        self.model.replace(old, new)
+        self.assertEqual(self.model.rowCount(), 2)
+        self.assertIs(self.model.task(1), new)
+        self.assertEqual(rows, [1])
+
     def test_couleur_erreur(self):
         from PySide6.QtGui import QColor
         self.model.add(FakeTask("a", error="refus", status="Erreur : refus"))
