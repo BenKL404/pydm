@@ -1,0 +1,58 @@
+name: Bug report / Signaler un bug
+description: Something does not work as expected. / Quelque chose ne fonctionne pas comme prévu.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened? / Que s'est-il passé ?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / Étapes pour reproduire
+      placeholder: |
+        1. Open …
+        2. Click …
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: url
+    attributes:
+      label: URL concerned / URL concernée
+      description: The link or page that fails, if you can share it. Never paste private links or cookies.
+  - type: dropdown
+    id: part
+    attributes:
+      label: Part of PyDM / Partie de PyDM
+      options:
+        - Download engine / Moteur de téléchargement
+        - Streaming video (yt-dlp) / Vidéo de streaming
+        - Graphical interface / Interface graphique
+        - Command line / Ligne de commande
+        - Browser extension / Extension du navigateur
+        - Installation (install.sh)
+        - Other / Autre
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment / Environnement
+      value: |
+        - Distribution:
+        - Python (`python3 --version`):
+        - yt-dlp (`yt-dlp --version`):
+        - Browser and version / Navigateur et version:
+        - PyDM version or commit:
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error messages / Messages d'erreur
+      description: Status shown in PyDM, terminal output (`python3 pydm.py`), or the extension console. Remove any cookie values.
+      render: text

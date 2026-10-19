@@ -2,7 +2,7 @@
 Type=Application
 Name=PyDM
 Comment=Gestionnaire de téléchargement multi-connexions
-Exec=sh -c 'python3 "$HOME/.local/bin/pydm.py"'
+Exec=pydm
 Icon=folder-download
 Terminal=false
 Categories=Network;FileTransfer;

@@ -1,0 +1,25 @@
+name: Feature request / Proposer une idée
+description: Suggest an improvement or a new feature. / Proposer une amélioration ou une nouvelle fonction.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What do you need? / De quoi avez-vous besoin ?
+      description: The problem you run into when using PyDM, not only the solution you have in mind.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution / Solution proposée
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered / Autres pistes envisagées
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I would like to implement this myself. / Je souhaite l'implémenter moi-même.

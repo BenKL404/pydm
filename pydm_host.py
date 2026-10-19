@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Kokou Bernard KPEDZI
 """Hôte de messagerie native : relie l'extension du navigateur à PyDM.
 
 Le navigateur lance ce script et lui passe un message (4 octets de longueur

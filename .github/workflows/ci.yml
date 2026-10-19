@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Compile
+        run: python -m py_compile pydm.py pydm_host.py
+      - name: Command line help
+        run: python pydm.py --help
+      - name: Native host answers ping
+        run: |
+          python -c 'import json,struct,sys; m=json.dumps({"action":"ping"}).encode(); sys.stdout.buffer.write(struct.pack("<I",len(m))+m)' \
+            | python pydm_host.py | tail -c +5 | python -c 'import json,sys; assert json.load(sys.stdin)["ok"]'
+      - name: Tests
+        run: |
+          if [ -d tests ]; then python -m unittest discover -v tests; else echo "No tests yet"; fi
+
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax
+        run: sh -n install.sh
+      - name: ShellCheck
+        run: shellcheck install.sh
+
+  extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: JavaScript syntax
+        run: for f in extension/*.js; do node --check "$f"; done
+      - name: Manifest is valid JSON
+        run: python3 -m json.tool extension/manifest.json > /dev/null
+      - name: Extension IDs match install.sh
+        run: |
+          grep -q '"id": "pydm@local"' extension/manifest.json
+          grep -q 'FIREFOX_ID="pydm@local"' install.sh
+          grep -q 'com.pydm.host' extension/background.js
+          grep -q 'HOST_NAME="com.pydm.host"' install.sh
+      - name: pydm-extension.zip matches extension/
+        run: |
+          python3 - <<'EOF'
+          import pathlib, sys, zipfile
+          src = {p.relative_to("extension").as_posix(): p.read_bytes()
+                 for p in pathlib.Path("extension").rglob("*") if p.is_file()}
+          with zipfile.ZipFile("pydm-extension.zip") as z:
+              packed = {n: z.read(n) for n in z.namelist() if not n.endswith("/")}
+          if src != packed:
+              diff = sorted(set(src) ^ set(packed)) + sorted(n for n in src.keys() & packed.keys() if src[n] != packed[n])
+              sys.exit("pydm-extension.zip is out of date: " + ", ".join(diff))
+          print(f"{len(src)} files match")
+          EOF

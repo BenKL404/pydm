@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Kokou Bernard KPEDZI
 # Installe PyDM pour l'utilisateur courant et le relie aux navigateurs
 # (Firefox, Chrome, Chromium, Brave, Edge, Vivaldi, Opera).
 set -e

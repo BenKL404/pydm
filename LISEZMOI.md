@@ -1,10 +1,15 @@
 # PyDM — gestionnaire de téléchargement pour Linux (style IDM)
 
+🇬🇧 [Read in English](README.md)
+
 ## 1. Installer PyDM
+
+Il faut Python 3.9 ou plus récent.
 
 ```bash
 sudo apt install python3-tk ffmpeg        # Fedora : sudo dnf install python3-tkinter ffmpeg
 pip install -U yt-dlp                     # ou : pipx install yt-dlp  (vidéos de streaming)
+git clone https://github.com/BenKL404/pydm.git && cd pydm
 ./install.sh
 ```
 
@@ -62,3 +67,14 @@ version `.deb` ou `.rpm` du navigateur. Firefox en Snap (Ubuntu) fonctionne.
 - Les téléchargements produits par un formulaire (POST) sont redemandés par
   simple lien et peuvent échouer. Désactivez alors l'interception dans l'icône PyDM.
 - Mettez yt-dlp à jour régulièrement (`pip install -U yt-dlp`) : les sites changent souvent.
+
+## Contribuer
+
+Signalements de bugs, idées et pull requests sont les bienvenus, en français ou en
+anglais : voir [CONTRIBUTING.md](CONTRIBUTING.md) et le [code de conduite](CODE_OF_CONDUCT.md).
+Pour une faille de sécurité, suivez [SECURITY.md](SECURITY.md) (jamais d'issue publique).
+
+## Licence
+
+PyDM est un logiciel libre distribué sous licence
+[GNU GPL version 3 ou ultérieure](LICENSE).
