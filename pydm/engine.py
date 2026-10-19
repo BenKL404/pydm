@@ -124,6 +124,22 @@ class Download(_Task):
     def done(self):
         return sum(s[2] for s in self.segments)
 
+    @property
+    def active_connections(self):
+        if not self.running:
+            return 0
+        return sum(1 for s in self.segments if s[1] < 0 or self._remaining(s) > 0)
+
+    @property
+    def resumable(self):
+        return self.ranges
+
+    def files(self):
+        """Fichiers présents sur le disque pour ce téléchargement."""
+        if not self.name:
+            return []
+        return [p for p in (self.path, self.part_path, self.state_path) if os.path.exists(p)]
+
     def _load_state(self):
         try:
             with open(self.state_path) as f:
@@ -313,6 +329,14 @@ class VideoDownload(_Task):
     @property
     def path(self):
         return os.path.join(self.folder, self.name or "")
+
+    active_connections = 0
+    resumable = True
+
+    def files(self):
+        if not self.name:
+            return []
+        return [p for p in (self.path, self.path + ".part") if os.path.exists(p)]
 
     def _hook(self, d):
         if self.stop_evt.is_set():

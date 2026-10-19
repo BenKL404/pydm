@@ -54,6 +54,15 @@ class DownloadTest(unittest.TestCase):
         self.assertEqual(d2.status, "Terminé")
         self.assertEqual(self.read(d2), self.data)
 
+    def test_proprietes_detail(self):
+        d = Download(self.start_server(), self.dir, parts=4)
+        self.assertEqual(d.active_connections, 0)
+        d.start()
+        wait(d)
+        self.assertTrue(d.resumable)
+        self.assertEqual(d.active_connections, 0)
+        self.assertEqual(d.files(), [d.path])
+
     def test_serveur_sans_plages(self):
         d = Download(self.start_server(ranges=False), self.dir, parts=4)
         d.start()
