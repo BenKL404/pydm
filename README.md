@@ -11,6 +11,8 @@ PyDM splits each download into several parallel connections, resumes after a
 pause or a crash, and plugs into your browser: click a download link or hover
 over a video, and PyDM takes over.
 
+![PyDM in dark mode](docs/screenshots/sombre.png)
+
 ## Features
 
 - **Up to 32 parallel connections per file**, with dynamic splitting: a free
@@ -24,32 +26,38 @@ over a video, and PyDM takes over.
   and Opera: download interception, a "Download this video" button on players,
   a context menu entry, and cookies and referrer forwarding so downloads that
   require a login work.
+- **A modern, dense interface** (Qt 6): real progress bars, light and dark
+  themes that follow the system, sortable columns, search, a detail panel,
+  right-click menu, keyboard shortcuts and drag-and-drop of links.
+- **Runs in the background** from the system tray, with a notification when a
+  download finishes or fails, and an option to start with the session.
 - **Clipboard monitoring**: copy a link and PyDM picks it up.
-- **No dependencies** beyond the Python standard library and Tkinter
-  (yt-dlp and ffmpeg are optional).
+- **Light footprint**: the download engine and the command line use only the
+  Python standard library; the interface uses PySide6, installed automatically
+  in a private environment.
 
 The interface is in French.
 
 ## Requirements
 
 - Linux
-- Python 3.9 or newer with Tkinter
-- Optional: [yt-dlp](https://github.com/yt-dlp/yt-dlp) for streaming sites,
-  [ffmpeg](https://ffmpeg.org/) for best quality and MP3
+- Python 3.9 or newer with the `venv` module (`python3-venv` on Debian/Ubuntu)
+- An Internet connection during installation (PySide6 and yt-dlp are downloaded)
+- Optional: [ffmpeg](https://ffmpeg.org/) for best video quality and MP3
 
 ## Installation
 
 ```bash
-sudo apt install python3-tk ffmpeg        # Fedora: sudo dnf install python3-tkinter ffmpeg
-pip install -U yt-dlp                     # or: pipx install yt-dlp
+sudo apt install python3-venv ffmpeg      # Fedora: sudo dnf install ffmpeg
 git clone https://github.com/BenKL404/pydm.git
 cd pydm
 ./install.sh
 ```
 
-`install.sh` installs PyDM into `~/.local/share/pydm`, adds the `pydm` command
+`install.sh` creates a private Python environment in `~/.local/share/pydm/venv`
+with PySide6 and yt-dlp, installs PyDM next to it, adds the `pydm` command
 and a menu entry, and registers PyDM with every supported browser it finds. Run
-it again after installing a new browser.
+it again after installing a new browser, or to update PyDM, PySide6 and yt-dlp.
 
 ### Browser extension
 
@@ -112,7 +120,7 @@ if needed.
 - DRM-protected videos (Netflix, Disney+, Prime Video, Spotify…) cannot be downloaded.
 - Downloads produced by a form (POST) are re-requested as a plain link and may
   fail. Turn interception off from the PyDM icon in that case.
-- Keep yt-dlp up to date (`pip install -U yt-dlp`): sites change often.
+- Keep yt-dlp up to date by running `./install.sh` again: sites change often.
 
 ## Contributing
 

@@ -7,9 +7,35 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- New Qt 6 interface: dense table with real progress bars, sortable columns,
+  search, detail panel, status bar with total speed and a speed graph.
+- PyDM logo and a set of icons drawn for PyDM; light and dark themes that
+  follow the system.
+- System tray icon: closing the window keeps PyDM running; notifications when a
+  download finishes or fails.
+- Right-click menu, keyboard shortcuts, drag-and-drop and pasting of several
+  links at once, deleting a downloaded file from the list.
+- Preferences window: download folder, connections, theme, clipboard,
+  notifications, close to tray, start with the session (`pydm --minimized`).
+- Settings are saved (`~/.config/pydm/settings.json`).
+- Test suite (`python3 -m unittest discover -s tests -t .`).
+
+### Changed
+
+- `install.sh` installs PyDM in a private Python environment with PySide6 and
+  yt-dlp; running it again updates them.
+- The code is now a `pydm/` package; run it with `python3 -m pydm`.
+- An unreadable settings or session file is kept as `.bak` instead of being lost.
+
+### Removed
+
+- The Tkinter interface.
+
 ### Fixed
 
-- The menu entry in `pydm.desktop` now runs the `pydm` command.
+- The menu entry in `pydm.desktop` now runs the `pydm` command and uses the PyDM icon.
 
 ## [1.0.0] - 2026-10-19
 

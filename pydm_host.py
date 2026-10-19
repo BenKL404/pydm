@@ -52,7 +52,7 @@ def forward(msg):
                                  stderr=subprocess.DEVNULL)
                 launched = True
             time.sleep(0.25)
-    return {"ok": False, "error": "PyDM ne démarre pas (Tkinter installé ?)"}
+    return {"ok": False, "error": "PyDM ne démarre pas (relancez install.sh)"}
 
 
 def main():

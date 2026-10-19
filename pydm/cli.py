@@ -12,7 +12,7 @@ en cas de coupure, surveillance du presse-papiers.
 Vidéos des sites de streaming (YouTube, Vimeo, Twitch, Dailymotion, TikTok,
 flux HLS/DASH…) via yt-dlp s'il est installé : pip install -U yt-dlp
 (ffmpeg recommandé pour la meilleure qualité et le MP3).
-Aucune autre dépendance hors bibliothèque standard (Tkinter pour l'interface).
+Moteur et ligne de commande : bibliothèque standard uniquement ; interface : PySide6 (Qt 6).
 """
 import argparse
 import sys

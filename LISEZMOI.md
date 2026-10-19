@@ -2,18 +2,21 @@
 
 🇬🇧 [Read in English](README.md)
 
+![PyDM en thème clair](docs/screenshots/clair.png)
+
 ## 1. Installer PyDM
 
-Il faut Python 3.9 ou plus récent.
+Il faut Python 3.9 ou plus récent avec le module `venv`, et une connexion Internet
+pendant l'installation (PySide6 et yt-dlp sont téléchargés).
 
 ```bash
-sudo apt install python3-tk ffmpeg        # Fedora : sudo dnf install python3-tkinter ffmpeg
-pip install -U yt-dlp                     # ou : pipx install yt-dlp  (vidéos de streaming)
+sudo apt install python3-venv ffmpeg      # Fedora : sudo dnf install ffmpeg
 git clone https://github.com/BenKL404/pydm.git && cd pydm
 ./install.sh
 ```
 
-`install.sh` installe PyDM dans `~/.local/share/pydm`, ajoute la commande `pydm`
+`install.sh` crée un environnement Python privé (`~/.local/share/pydm/venv`) avec
+PySide6 et yt-dlp, installe PyDM à côté, ajoute la commande `pydm`
 et l'entrée dans le menu des applications. Il déclare aussi PyDM auprès de
 Firefox, Chrome, Chromium, Brave, Edge, Vivaldi et Opera. Si vous installez un
 navigateur plus tard, relancez simplement `./install.sh`.
@@ -61,12 +64,28 @@ version `.deb` ou `.rpm` du navigateur. Firefox en Snap (Ubuntu) fonctionne.
 - Si PyDM n'est pas joignable, le navigateur télécharge normalement (point rouge sur l'icône).
 - PyDM s'ouvre tout seul s'il est fermé.
 
+## 4. L'interface
+
+- **Coller un lien** dans le champ du haut (ou n'importe où avec Ctrl+V), ou le
+  **glisser-déposer** sur la fenêtre ; plusieurs liens à la fois sont acceptés.
+- Les menus **Qualité** et **Cookies** s'appliquent aux vidéos de streaming.
+- **Clic droit** sur une ligne : reprendre, pause, ouvrir le fichier ou le dossier,
+  copier le lien, retirer de la liste, supprimer le fichier.
+- **Raccourcis** : Espace (pause / reprise), Suppr (retirer), Ctrl+F (rechercher),
+  Ctrl+O (dossier), Ctrl+, (préférences), Ctrl+Q (quitter).
+- Le **panneau du bas** détaille le téléchargement sélectionné ; double-clic pour le
+  masquer, ou pour ouvrir un fichier terminé.
+- **Fermer la fenêtre** laisse PyDM dans la barre système (désactivable dans les
+  préférences) ; une notification signale chaque téléchargement terminé ou en échec.
+- **Préférences** (menu ☰) : dossier, connexions, thème clair / sombre / système,
+  presse-papiers, notifications, démarrage avec la session.
+
 ## Limites
 - Les vidéos protégées par DRM (Netflix, Disney+, Prime Video, Spotify…) ne
   peuvent pas être téléchargées.
 - Les téléchargements produits par un formulaire (POST) sont redemandés par
   simple lien et peuvent échouer. Désactivez alors l'interception dans l'icône PyDM.
-- Mettez yt-dlp à jour régulièrement (`pip install -U yt-dlp`) : les sites changent souvent.
+- Mettez yt-dlp à jour régulièrement en relançant `./install.sh` : les sites changent souvent.
 
 ## Contribuer
 

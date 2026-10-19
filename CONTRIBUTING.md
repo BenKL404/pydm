@@ -18,7 +18,9 @@ Security issues must **not** be reported in public issues: see [SECURITY.md](SEC
 
 | Path | Role |
 |---|---|
-| `pydm/` | Python package: `engine.py` (downloads), `ipc.py` (local socket), `cli.py` (command line), `tkgui.py` (current interface) |
+| `pydm/` | Engine and command line, standard library only: `engine.py` (downloads), `ipc.py` (local socket), `store.py` (settings and session), `filetypes.py`, `cli.py` |
+| `pydm/gui/` | Qt interface (PySide6): `app.py`, `window.py`, `model.py`, `delegates.py`, `widgets.py`, `tray.py`, `prefs.py`, `theme.py`, `icons/` |
+| `tools/render_icons.py` | Renders the logo PNGs (application and extension) from `pydm/gui/icons/logo.svg` |
 | `pydm_host.py` | Native messaging host between the browser and PyDM |
 | `extension/` | Browser extension (Manifest V3, Chrome and Firefox) |
 | `pydm-extension.zip` | Packaged extension for Firefox, built from `extension/` |
@@ -30,8 +32,9 @@ Security issues must **not** be reported in public issues: see [SECURITY.md](SEC
 ```bash
 git clone https://github.com/BenKL404/pydm.git
 cd pydm
-python3 -m pydm                  # run the GUI straight from the repository
-python3 -m pydm URL -n 4         # or the command line
+python3 -m venv .venv && .venv/bin/pip install PySide6 yt-dlp
+.venv/bin/python -m pydm             # run the interface straight from the repository
+.venv/bin/python -m pydm URL -n 4    # or the command line
 ```
 
 To test the browser integration, run `./install.sh` and load `extension/` as an
@@ -40,8 +43,14 @@ unpacked extension (see the [README](README.md#browser-extension)).
 
 ## Rules for code changes
 
-- **Standard library only.** PyDM must keep working with nothing but Python and
-  Tkinter. yt-dlp and ffmpeg stay optional and are detected at runtime.
+- **Standard library only outside `pydm/gui/`.** The engine, the command line
+  and `pydm_host.py` must work with nothing but Python; yt-dlp and ffmpeg stay
+  optional and are detected at runtime. PySide6 is the interface's only
+  dependency: do not add others.
+- **Icons**: one SVG per icon in `pydm/gui/icons/` (24 × 24 grid, a single
+  `fill="currentColor"` path, cut-outs as holes with `fill-rule="evenodd"`).
+  After changing `logo.svg`, run `.venv/bin/python tools/render_icons.py` and
+  rebuild the Firefox package.
 - **Keep the user-facing text in French** (interface, messages, `LISEZMOI.md`).
   Code identifiers are in English, and code comments follow the existing style.
 - **Keep the shared identifiers in sync.** The native host name
@@ -65,11 +74,12 @@ Run the same checks as CI before opening a pull request:
 python3 -m compileall -q pydm pydm_host.py
 sh -n install.sh
 node --check extension/*.js
-python3 -m unittest discover -s tests -t .
+.venv/bin/python -m unittest discover -s tests -t .
 ```
 
-New features and bug fixes should come with tests in `tests/` (standard
-`unittest`, no extra dependency) whenever the code can be tested without the GUI.
+Interface tests run off-screen (`tests/qt.py` forces `QT_QPA_PLATFORM=offscreen`)
+and are skipped when PySide6 is not installed. New features and bug fixes should
+come with tests in `tests/` (standard `unittest`, no extra dependency).
 
 ## Pull requests
 
