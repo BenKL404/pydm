@@ -18,7 +18,7 @@ Security issues must **not** be reported in public issues: see [SECURITY.md](SEC
 
 | Path | Role |
 |---|---|
-| `pydm.py` | Download engine, GUI (Tkinter) and command line |
+| `pydm/` | Python package: `engine.py` (downloads), `ipc.py` (local socket), `cli.py` (command line), `tkgui.py` (current interface) |
 | `pydm_host.py` | Native messaging host between the browser and PyDM |
 | `extension/` | Browser extension (Manifest V3, Chrome and Firefox) |
 | `pydm-extension.zip` | Packaged extension for Firefox, built from `extension/` |
@@ -30,8 +30,8 @@ Security issues must **not** be reported in public issues: see [SECURITY.md](SEC
 ```bash
 git clone https://github.com/BenKL404/pydm.git
 cd pydm
-python3 pydm.py                  # run the GUI straight from the repository
-python3 pydm.py URL -n 4         # or the command line
+python3 -m pydm                  # run the GUI straight from the repository
+python3 -m pydm URL -n 4         # or the command line
 ```
 
 To test the browser integration, run `./install.sh` and load `extension/` as an
@@ -48,7 +48,7 @@ unpacked extension (see the [README](README.md#browser-extension)).
   `com.pydm.host`, the Chrome extension ID (derived from the `key` in
   `extension/manifest.json`) and the Firefox ID `pydm@local` appear in both
   `install.sh` and the extension. The socket path is defined in both
-  `pydm.py` and `pydm_host.py`.
+  `pydm/ipc.py` and `pydm_host.py`.
 - **Rebuild the Firefox package** after any change in `extension/`:
 
   ```bash
@@ -62,10 +62,10 @@ unpacked extension (see the [README](README.md#browser-extension)).
 Run the same checks as CI before opening a pull request:
 
 ```bash
-python3 -m py_compile pydm.py pydm_host.py
+python3 -m compileall -q pydm pydm_host.py
 sh -n install.sh
 node --check extension/*.js
-python3 -m unittest discover tests   # once the tests/ folder exists
+python3 -m unittest discover -s tests -t .
 ```
 
 New features and bug fixes should come with tests in `tests/` (standard

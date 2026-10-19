@@ -20,16 +20,16 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Compile
-        run: python -m py_compile pydm.py pydm_host.py
+        run: python -m compileall -q pydm pydm_host.py
       - name: Command line help
-        run: python pydm.py --help
+        run: python -m pydm --help
       - name: Native host answers ping
         run: |
           python -c 'import json,struct,sys; m=json.dumps({"action":"ping"}).encode(); sys.stdout.buffer.write(struct.pack("<I",len(m))+m)' \
             | python pydm_host.py | tail -c +5 | python -c 'import json,sys; assert json.load(sys.stdin)["ok"]'
       - name: Tests
         run: |
-          if [ -d tests ]; then python -m unittest discover -v tests; else echo "No tests yet"; fi
+          python -m unittest discover -v -s tests -t .
 
   shell:
     runs-on: ubuntu-latest

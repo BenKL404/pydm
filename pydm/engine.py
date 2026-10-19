@@ -1,42 +1,22 @@
-#!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Kokou Bernard KPEDZI
-"""PyDM - gestionnaire de téléchargement multi-connexions (style IDM) pour Linux.
-
-  Interface graphique :  python3 pydm.py
-  Ligne de commande   :  python3 pydm.py URL [-o DOSSIER] [-n CONNEXIONS] [-q QUALITE]
-
-Fonctions : téléchargement découpé en plusieurs connexions parallèles,
-découpage dynamique (une connexion libre reprend la moitié du plus gros
-segment restant), pause / reprise même après fermeture, relance automatique
-en cas de coupure, surveillance du presse-papiers.
-Vidéos des sites de streaming (YouTube, Vimeo, Twitch, Dailymotion, TikTok,
-flux HLS/DASH…) via yt-dlp s'il est installé : pip install -U yt-dlp
-(ffmpeg recommandé pour la meilleure qualité et le MP3).
-Aucune autre dépendance hors bibliothèque standard (Tkinter pour l'interface).
-"""
-import argparse
+"""Moteur de téléchargement : fichiers directs multi-connexions et vidéos via yt-dlp."""
 import json
 import os
-import queue
 import re
 import shutil
-import socket
-import subprocess
-import sys
 import threading
 import time
 import urllib.parse
 import urllib.request
 from email.message import Message
 
+from .util import unique_path
+
 CHUNK = 64 * 1024
 MIN_SPLIT = 2 * 1024 * 1024
 MAX_RETRIES = 6
 UA = "Mozilla/5.0 (X11; Linux x86_64) PyDM/1.0"
-CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".config", "pydm")
-SESSION_FILE = os.path.join(CONFIG_DIR, "session.json")
-SOCKET_PATH = os.path.join(CONFIG_DIR, "pydm.sock")
 QUALITIES = {
     "Meilleure": "bv*+ba/b",
     "1080p": "bv*[height<=1080]+ba/b[height<=1080]/b",
@@ -49,25 +29,6 @@ VIDEO_HOSTS = re.compile(
     r"(^|\.)(youtube\.com|youtu\.be|vimeo\.com|dailymotion\.com|dai\.ly|twitch\.tv|tiktok\.com|"
     r"instagram\.com|facebook\.com|fb\.watch|x\.com|twitter\.com|reddit\.com|soundcloud\.com|"
     r"bilibili\.com|rumble\.com|odysee\.com|bandcamp\.com|arte\.tv|france\.tv|streamable\.com)$", re.I)
-
-
-def human(n):
-    if n is None:
-        return "?"
-    for unit in ("o", "Ko", "Mo", "Go", "To"):
-        if n < 1024:
-            return f"{int(n)} {unit}" if unit == "o" else f"{n:.1f} {unit}"
-        n /= 1024
-    return f"{n:.1f} Po"
-
-
-def human_time(s):
-    if s is None or s < 0:
-        return ""
-    s = int(s)
-    h, rest = divmod(s, 3600)
-    m, s = divmod(rest, 60)
-    return f"{h}h{m:02d}m" if h else f"{m}m{s:02d}s"
 
 
 def probe(url, headers=None):
@@ -93,16 +54,6 @@ def probe(url, headers=None):
         name = os.path.basename(urllib.parse.unquote(urllib.parse.urlparse(final).path))
     name = (name or "telechargement").replace("/", "_").strip() or "telechargement"
     return size, ranges, name
-
-
-def unique_path(folder, name):
-    base, ext = os.path.splitext(name)
-    candidate, i = name, 1
-    while any(os.path.exists(os.path.join(folder, candidate + suffix))
-              for suffix in ("", ".part", ".pydm")):
-        candidate = f"{base} ({i}){ext}"
-        i += 1
-    return candidate
 
 
 class _Task:
@@ -463,314 +414,3 @@ def make_download(url, folder, parts=8, quality="Meilleure", browser="Aucun",
     if (kind == "video" and have_ytdlp()) or (kind == "auto" and looks_like_video(url, headers)):
         return VideoDownload(url, folder, parts, quality=quality, browser=browser, headers=headers)
     return Download(url, folder, parts, headers=headers, name_hint=filename)
-
-
-# ---------------------------------------------------------------------------
-# Communication avec l'extension du navigateur (socket Unix privée)
-# ---------------------------------------------------------------------------
-def start_ipc(handler):
-    os.makedirs(CONFIG_DIR, exist_ok=True)
-    try:
-        os.unlink(SOCKET_PATH)
-    except FileNotFoundError:
-        pass
-    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    srv.bind(SOCKET_PATH)
-    os.chmod(SOCKET_PATH, 0o600)
-    srv.listen(8)
-
-    def loop():
-        while True:
-            conn, _ = srv.accept()
-            with conn:
-                try:
-                    reply = handler(json.loads(conn.makefile().readline()))
-                except Exception as e:  # noqa: BLE001
-                    reply = {"ok": False, "error": str(e)}
-                conn.sendall((json.dumps(reply) + "\n").encode())
-    threading.Thread(target=loop, daemon=True).start()
-
-
-def ipc_send(msg, timeout=3):
-    """Envoie un message à l'instance PyDM ouverte (OSError si aucune)."""
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
-        s.settimeout(timeout)
-        s.connect(SOCKET_PATH)
-        s.sendall((json.dumps(msg) + "\n").encode())
-        return json.loads(s.makefile().readline() or "{}")
-
-
-# ---------------------------------------------------------------------------
-# Ligne de commande
-# ---------------------------------------------------------------------------
-def run_cli(url, folder, parts, quality="Meilleure", browser="Aucun"):
-    d = make_download(url, folder, parts, quality, browser)
-    d.start()
-    try:
-        while d.running:
-            time.sleep(0.5)
-            pct = f"{100 * d.done / d.size:5.1f} %" if d.size else ""
-            eta = human_time((d.size - d.done) / d.speed) if d.size and d.speed else ""
-            if isinstance(d, Download):
-                extra = f"[{sum(1 for s in d.segments if s[1] < 0 or Download._remaining(s) > 0)} conn.]"
-            else:
-                extra = d.status
-            sys.stdout.write(f"\r{(d.name or '')[:50]}  {pct}  {human(d.done)}/{human(d.size)}  "
-                             f"{human(d.speed)}/s  {eta}  {extra}   ")
-            sys.stdout.flush()
-    except KeyboardInterrupt:
-        d.pause()
-        d.wait()
-    print(f"\n{d.status}" + (f" -> {d.path}" if d.finished else ""))
-    if d.status == "En pause":
-        print("Relancez la même commande pour reprendre.")
-    return 0 if d.finished else 1
-
-
-# ---------------------------------------------------------------------------
-# Interface graphique
-# ---------------------------------------------------------------------------
-def run_gui(default_dir, parts):
-    import tkinter as tk
-    from tkinter import filedialog, messagebox, ttk
-
-    root = tk.Tk()
-    root.title("PyDM – Gestionnaire de téléchargement")
-    root.geometry("980x460")
-    items = {}  # iid -> Download
-
-    url_var = tk.StringVar()
-    dir_var = tk.StringVar(value=default_dir)
-    parts_var = tk.IntVar(value=parts)
-    clip_var = tk.BooleanVar(value=True)
-    quality_var = tk.StringVar(value="Meilleure")
-    browser_var = tk.StringVar(value="Aucun")
-    dirty = [False]
-
-    def add(url=None, headers=None, filename=None, kind="auto"):
-        url = (url or url_var.get()).strip()
-        if not re.match(r"^(https?|ftp)://", url):
-            messagebox.showwarning("PyDM", "Entrez une URL http(s) ou ftp valide.")
-            return
-        folder, parts, quality, browser = (os.path.expanduser(dir_var.get()), parts_var.get(),
-                                           quality_var.get(), browser_var.get())
-        iid = tree.insert("", "end", values=("…",) * 6)
-        placeholder = Download(url, folder, parts)
-        placeholder.status = "Analyse…"
-        items[iid] = placeholder
-        url_var.set("")
-
-        def detect():   # fichier direct ou page vidéo ? (réseau : hors du fil de l'interface)
-            d = make_download(url, folder, parts, quality, browser, headers, filename, kind)
-            if iid in items:
-                items[iid] = d
-                d.start()
-                dirty[0] = True
-        threading.Thread(target=detect, daemon=True).start()
-
-    def browse():
-        path = filedialog.askdirectory(initialdir=dir_var.get())
-        if path:
-            dir_var.set(path)
-
-    def selected():
-        return [items[i] for i in tree.selection() if i in items]
-
-    def resume():
-        for d in selected():
-            d.start()
-
-    def pause():
-        for d in selected():
-            d.pause()
-
-    def remove():
-        for iid in tree.selection():
-            d = items.pop(iid, None)
-            if d:
-                d.pause()
-            tree.delete(iid)
-        save_session()
-
-    def open_folder():
-        sel = selected()
-        folder = sel[0].folder if sel else os.path.expanduser(dir_var.get())
-        subprocess.Popen(["xdg-open", folder])
-
-    def save_session():
-        os.makedirs(CONFIG_DIR, exist_ok=True)
-        data = []
-        for d in list(items.values()):
-            e = {"url": d.url, "folder": d.folder, "parts": d.parts, "name": d.name, "headers": d.headers}
-            if isinstance(d, VideoDownload):
-                e.update(kind="video", quality=d.quality, browser=d.browser)
-            data.append(e)
-        fd = os.open(SESSION_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)  # contient des cookies
-        with os.fdopen(fd, "w") as f:
-            json.dump(data, f, indent=1)
-
-    def load_session():
-        try:
-            with open(SESSION_FILE) as f:
-                data = json.load(f)
-        except (OSError, ValueError):
-            return
-        for e in data:
-            if e.get("kind") == "video":
-                d = VideoDownload(e["url"], e["folder"], e.get("parts", 8), e.get("name"),
-                                  e.get("quality", "Meilleure"), e.get("browser", "Aucun"), e.get("headers"))
-            else:
-                d = Download(e["url"], e["folder"], e.get("parts", 8), e.get("name"), e.get("headers"))
-            if d.status == "En attente":
-                d.status = "En pause"
-            items[tree.insert("", "end", values=("…",) * 6)] = d
-
-    inbox = queue.Queue()
-
-    def show_window():
-        root.deiconify()
-        root.lift()
-        root.attributes("-topmost", True)
-        root.after(300, lambda: root.attributes("-topmost", False))
-
-    def handle_inbox():     # messages envoyés par l'extension du navigateur
-        while not inbox.empty():
-            msg = inbox.get()
-            if msg.get("action") == "add" and msg.get("url"):
-                add(msg["url"], msg.get("headers"), msg.get("filename"), msg.get("kind", "auto"))
-            show_window()
-
-    def refresh():
-        handle_inbox()
-        if dirty[0]:
-            dirty[0] = False
-            save_session()
-        for iid, d in list(items.items()):
-            if not tree.exists(iid):
-                continue
-            if d.size:
-                frac = d.done / d.size
-                bar = "█" * int(frac * 12) + "░" * (12 - int(frac * 12))
-                prog = f"{bar} {100 * frac:5.1f} %"
-            else:
-                prog = human(d.done)
-            eta = human_time((d.size - d.done) / d.speed) if d.size and d.speed > 0 else ""
-            speed = f"{human(d.speed)}/s" if d.running else ""
-            tree.item(iid, values=(d.name or d.url, human(d.size), prog, speed, eta, d.status))
-        root.after(500, refresh)
-
-    last_clip = [""]
-
-    def watch_clipboard():
-        if clip_var.get():
-            try:
-                text = root.clipboard_get().strip()
-            except tk.TclError:
-                text = ""
-            if text != last_clip[0]:
-                last_clip[0] = text
-                if re.match(r"^(https?|ftp)://\S+$", text) and not url_var.get():
-                    url_var.set(text)
-                    root.lift()
-        root.after(1000, watch_clipboard)
-
-    def on_close():
-        save_session()
-        for d in items.values():
-            d.pause()
-        for d in items.values():
-            d.wait(5)
-        try:
-            os.unlink(SOCKET_PATH)
-        except OSError:
-            pass
-        root.destroy()
-
-    top = ttk.Frame(root, padding=8)
-    top.pack(fill="x")
-    ttk.Label(top, text="URL :").grid(row=0, column=0, sticky="w")
-    entry = ttk.Entry(top, textvariable=url_var)
-    entry.grid(row=0, column=1, columnspan=4, sticky="ew", padx=4)
-    entry.bind("<Return>", lambda e: add())
-    ttk.Button(top, text="Télécharger", command=add).grid(row=0, column=5, sticky="ew")
-    ttk.Label(top, text="Dossier :").grid(row=1, column=0, sticky="w", pady=(6, 0))
-    ttk.Entry(top, textvariable=dir_var).grid(row=1, column=1, sticky="ew", padx=4, pady=(6, 0))
-    ttk.Button(top, text="…", width=3, command=browse).grid(row=1, column=2, pady=(6, 0))
-    ttk.Label(top, text="Connexions :").grid(row=1, column=3, padx=(12, 2), pady=(6, 0))
-    ttk.Spinbox(top, from_=1, to=32, textvariable=parts_var, width=4).grid(row=1, column=4, pady=(6, 0))
-    ttk.Checkbutton(top, text="Surveiller le presse-papiers", variable=clip_var).grid(
-        row=1, column=5, padx=(12, 0), pady=(6, 0))
-    ttk.Label(top, text="Vidéo :").grid(row=2, column=0, sticky="w", pady=(6, 0))
-    opts = ttk.Frame(top)
-    opts.grid(row=2, column=1, columnspan=5, sticky="w", padx=4, pady=(6, 0))
-    ttk.Combobox(opts, textvariable=quality_var, values=list(QUALITIES), state="readonly",
-                 width=11).pack(side="left")
-    ttk.Label(opts, text="   Cookies du navigateur :").pack(side="left")
-    ttk.Combobox(opts, textvariable=browser_var, values=BROWSERS, state="readonly",
-                 width=9).pack(side="left")
-    info = ("yt-dlp détecté : sites de streaming pris en charge" if have_ytdlp()
-            else "yt-dlp absent : pip install -U yt-dlp pour les sites de streaming")
-    if have_ytdlp() and not shutil.which("ffmpeg"):
-        info += " (installez ffmpeg pour la meilleure qualité)"
-    ttk.Label(opts, text="   " + info, foreground="gray40").pack(side="left")
-    top.columnconfigure(1, weight=1)
-
-    cols = (("name", "Fichier", 270), ("size", "Taille", 90), ("prog", "Progression", 220),
-            ("speed", "Vitesse", 100), ("eta", "Restant", 80), ("status", "Statut", 160))
-    mid = ttk.Frame(root, padding=(8, 0))
-    mid.pack(fill="both", expand=True)
-    tree = ttk.Treeview(mid, columns=[c[0] for c in cols], show="headings")
-    for key, title, width in cols:
-        tree.heading(key, text=title)
-        tree.column(key, width=width, anchor="w")
-    sb = ttk.Scrollbar(mid, orient="vertical", command=tree.yview)
-    tree.configure(yscrollcommand=sb.set)
-    tree.pack(side="left", fill="both", expand=True)
-    sb.pack(side="right", fill="y")
-
-    bottom = ttk.Frame(root, padding=8)
-    bottom.pack(fill="x")
-    for text, cmd in (("▶ Reprendre", resume), ("⏸ Pause", pause), ("✖ Retirer", remove),
-                      ("📂 Ouvrir le dossier", open_folder)):
-        ttk.Button(bottom, text=text, command=cmd).pack(side="left", padx=(0, 6))
-
-    load_session()
-    try:
-        start_ipc(lambda msg: inbox.put(msg) or {"ok": True})
-    except OSError as e:
-        print(f"Extension du navigateur indisponible : {e}", file=sys.stderr)
-    root.protocol("WM_DELETE_WINDOW", on_close)
-    refresh()
-    watch_clipboard()
-    entry.focus()
-    root.mainloop()
-
-
-def main():
-    p = argparse.ArgumentParser(description="PyDM - téléchargements multi-connexions")
-    p.add_argument("url", nargs="?", help="URL à télécharger (sans URL : interface graphique)")
-    p.add_argument("-o", "--output", default=os.path.join(os.path.expanduser("~"), "Téléchargements")
-                   if os.path.isdir(os.path.expanduser("~/Téléchargements"))
-                   else os.path.expanduser("~/Downloads"), help="dossier de destination")
-    p.add_argument("-n", "--connections", type=int, default=8, help="nombre de connexions (défaut 8)")
-    p.add_argument("-q", "--qualite", default="Meilleure", choices=list(QUALITIES),
-                   help="qualité pour les vidéos de streaming")
-    p.add_argument("--cookies", default="Aucun", choices=BROWSERS,
-                   help="utiliser les cookies de ce navigateur (vidéos nécessitant votre compte)")
-    a = p.parse_args()
-    if a.url:
-        sys.exit(run_cli(a.url, a.output, a.connections, a.qualite, a.cookies))
-    try:
-        ipc_send({"action": "show"})    # déjà ouvert : on affiche la fenêtre existante
-        return
-    except (OSError, ValueError):
-        pass
-    try:
-        import tkinter  # noqa: F401
-    except ImportError:
-        sys.exit("Tkinter manquant : sudo apt install python3-tk   (ou dnf install python3-tkinter)")
-    run_gui(a.output, a.connections)
-
-
-if __name__ == "__main__":
-    main()

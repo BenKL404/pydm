@@ -11,10 +11,17 @@ CHROME_ID="feloklndigmnjlmffbddgcdfigpnbcba"
 FIREFOX_ID="pydm@local"
 
 mkdir -p "$DEST" "$HOME/.local/bin" "$HOME/.local/share/applications"
-cp "$SRC/pydm.py" "$SRC/pydm_host.py" "$DEST/"
-chmod +x "$DEST/pydm.py" "$DEST/pydm_host.py"
-ln -sf "$DEST/pydm.py" "$HOME/.local/bin/pydm"
-sed "s|^Exec=.*|Exec=python3 $DEST/pydm.py|" "$SRC/pydm.desktop" > "$HOME/.local/share/applications/pydm.desktop"
+rm -rf "$DEST/pydm" "$DEST/pydm.py"
+cp -r "$SRC/pydm" "$DEST/pydm"
+cp "$SRC/pydm_host.py" "$DEST/"
+chmod +x "$DEST/pydm_host.py"
+rm -f "$HOME/.local/bin/pydm"
+cat > "$HOME/.local/bin/pydm" <<EOF
+#!/bin/sh
+PYTHONPATH="$DEST" exec python3 -m pydm "\$@"
+EOF
+chmod +x "$HOME/.local/bin/pydm"
+cp "$SRC/pydm.desktop" "$HOME/.local/share/applications/pydm.desktop"
 echo "PyDM installé dans $DEST (commande : pydm)"
 
 write_manifest() {   # $1 = dossier, $2 = clé (allowed_origins / allowed_extensions), $3 = valeur

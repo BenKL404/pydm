@@ -99,7 +99,7 @@ the browser downloads normally. PyDM starts automatically if it is closed.
 ## How it works
 
 ```
-extension/ (browser)  --native messaging-->  pydm_host.py  --Unix socket-->  pydm.py
+extension/ (browser)  --native messaging-->  pydm_host.py  --Unix socket-->  pydm (app)
 ```
 
 The extension sends each download to `pydm_host.py`, which the browser starts

@@ -54,5 +54,5 @@ body:
     id: logs
     attributes:
       label: Error messages / Messages d'erreur
-      description: Status shown in PyDM, terminal output (`python3 pydm.py`), or the extension console. Remove any cookie values.
+      description: Status shown in PyDM, terminal output (`pydm` started from a terminal), or the extension console. Remove any cookie values.
       render: text
