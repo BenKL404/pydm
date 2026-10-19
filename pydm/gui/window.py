@@ -32,6 +32,8 @@ class MainWindow(QMainWindow):
         self.inbox = queue.Queue()      # messages de l'extension (thread IPC)
         self.detected = queue.Queue()   # (ligne provisoire, tâche) issus des threads de détection
         self.dirty = False
+        self.tray = None                # barre système, créée par app.run si disponible
+        self._seen = {}                 # id(tâche) -> (terminée, erreur) au dernier passage
         self.setWindowTitle("PyDM")
         self.setWindowIcon(theme.logo())
         self.resize(1100, 600)
@@ -128,6 +130,7 @@ class MainWindow(QMainWindow):
         h.addWidget(self.btn_search)
         self.btn_menu = self._tool("menu", "Menu", lambda: None)
         self.menu = QMenu(self)
+        self.menu.addAction("Préférences…", self.open_preferences, QKeySequence("Ctrl+,"))
         self.menu.addAction("À propos de PyDM", self.about)
         self.menu.addSeparator()
         self.menu.addAction("Quitter", self.quit_app)
@@ -174,6 +177,7 @@ class MainWindow(QMainWindow):
 
     def _shortcuts(self):
         for keys, slot in ((QKeySequence.Find, self.toggle_search), ("Ctrl+O", self.open_folder),
+                           ("Ctrl+,", self.open_preferences),
                            (QKeySequence.Quit, self.quit_app), ("Ctrl+Q", self.quit_app)):
             QShortcut(QKeySequence(keys), self, slot)
 
@@ -319,6 +323,7 @@ class MainWindow(QMainWindow):
                 task.start()
                 self.dirty = True
         self.model.refresh()
+        self._notify_transitions()
         if self.dirty:
             self.dirty = False
             self.save_session()
@@ -340,6 +345,23 @@ class MainWindow(QMainWindow):
         if now - self._last_sample >= 1:        # un point par seconde sur la courbe
             self._last_sample = now
             self.sparkline.push(total)
+        if self.tray:
+            self.tray.update(sum(t.running for t in tasks), total)
+
+    def _notify_transitions(self):
+        seen = {}
+        for t in self.model.tasks():
+            now = (t.finished, bool(t.error))
+            before = self._seen.get(id(t))
+            seen[id(t)] = now
+            if before is None or not (self.tray and self.settings["notify"]):
+                continue            # première apparition (session, ajout) : rien à signaler
+            name = t.name or t.url
+            if now[0] and not before[0]:
+                self.tray.notify("Téléchargement terminé", name, t.folder)
+            elif now[1] and not before[1]:
+                self.tray.notify("Échec", f"{name} : {t.error[:80]}")
+        self._seen = seen
 
     def _update_detail(self):
         idx = self.table.selectionModel().currentIndex()
@@ -434,6 +456,44 @@ class MainWindow(QMainWindow):
         if errors:
             QMessageBox.warning(self, "PyDM", "Certains fichiers n'ont pas pu être supprimés :\n" + "\n".join(errors))
 
+    def pause_all(self):
+        for t in self.model.tasks():
+            t.pause()
+
+    def resume_all(self):
+        for t in self.model.tasks():
+            if not t.running and not t.finished:
+                t.start()
+
+    def open_preferences(self):
+        from .prefs import PreferencesDialog, set_autostart
+        dlg = PreferencesDialog(self.settings, self.tray is not None, self)
+        if dlg.exec() != PreferencesDialog.Accepted:
+            return
+        new = dlg.result_settings()
+        if new["autostart"] != self.settings["autostart"]:
+            try:
+                set_autostart(new["autostart"])
+            except OSError as e:
+                QMessageBox.warning(self, "PyDM", f"Démarrage avec la session impossible : {e.strerror}")
+                new["autostart"] = self.settings["autostart"]
+        theme_changed = new["theme"] != self.settings["theme"]
+        self.settings.update(new)
+        store.save_settings(self.settings)
+        if theme_changed:
+            theme.apply(QGuiApplication.instance(), new["theme"])
+            self.refresh_icons()
+
+    def refresh_icons(self):
+        """Recolore les icônes après un changement de thème."""
+        for b in self.findChildren(QToolButton):
+            name = b.property("icon_name")
+            if name:
+                b.setIcon(theme.icon(name))
+        self.empty.setStyleSheet(f"color: {theme.colors()['muted']}; font-size: 14px;")
+        self.model.layoutChanged.emit()
+        self._update_detail()
+
     def resume_selected(self):
         for t in self.selected_tasks():
             t.start()
@@ -484,5 +544,13 @@ class MainWindow(QMainWindow):
         QGuiApplication.quit()
 
     def closeEvent(self, event):
+        if self.tray and self.settings["close_to_tray"]:
+            event.ignore()
+            self.hide()
+            if not self.settings["tray_hint_shown"]:
+                self.tray.notify("PyDM continue en arrière-plan",
+                                 "Les téléchargements se poursuivent. Quittez depuis l'icône de la barre système.")
+                self._set("tray_hint_shown", True)
+            return
         self.quit_app()
         event.accept()

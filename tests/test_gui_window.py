@@ -46,9 +46,10 @@ class WindowCase(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.cfg = tmp.name
-        patcher = mock.patch("pydm.ipc.CONFIG_DIR", self.cfg)
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        for name, value in (("CONFIG_DIR", self.cfg), ("SOCKET_PATH", os.path.join(self.cfg, "pydm.sock"))):
+            patcher = mock.patch(f"pydm.ipc.{name}", value)     # jamais la vraie socket
+            patcher.start()
+            self.addCleanup(patcher.stop)
         from pydm import store
         from pydm.gui.window import MainWindow
         self.settings = dict(store.DEFAULTS, folder=self.cfg)
@@ -184,6 +185,63 @@ class ComfortTest(WindowCase):
         w.table.clearSelection()
         w.tick()
         self.assertIn("Aucun téléchargement sélectionné", w.detail.text())
+
+
+class FakeTray:
+    def __init__(self):
+        self.messages = []
+
+    def notify(self, title, body, folder=None):
+        self.messages.append((title, body))
+
+    def update(self, running, speed):
+        pass
+
+
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class TrayTest(WindowCase):
+    def test_notification_fin(self):
+        w = self.window()
+        w.tray = FakeTray()
+        t = FakeDownload("https://a.fr/fini.iso", self.cfg)
+        t.status, t.running = "Téléchargement", True
+        w.model.add(t)
+        w.tick()
+        t.status, t.running = "Terminé", False
+        w.tick()
+        w.tick()
+        self.assertEqual(w.tray.messages, [("Téléchargement terminé", "fini.iso")])
+
+    def test_notification_erreur(self):
+        w = self.window()
+        w.tray = FakeTray()
+        t = FakeDownload("https://a.fr/x.bin", self.cfg)
+        w.model.add(t)
+        w.tick()
+        t.error, t.status = "HTTP Error 403: Forbidden", "Erreur : HTTP Error 403: Forbidden"
+        w.tick()
+        self.assertEqual(w.tray.messages, [("Échec", "x.bin : HTTP Error 403: Forbidden")])
+
+    def test_pas_de_notification_au_chargement(self):
+        w = self.window()
+        w.tray = FakeTray()
+        t = FakeDownload("https://a.fr/deja.iso", self.cfg)
+        t.status = "Terminé"
+        w.model.add(t)
+        w.tick()
+        self.assertEqual(w.tray.messages, [])
+
+    def test_fermer_vers_la_barre(self):
+        w = self.window()
+        w.tray = FakeTray()
+        w.show()
+        w.close()
+        self.assertFalse(w.isVisible())
+        self.assertEqual(len(w.tray.messages), 1)        # avertissement au premier masquage
+        self.assertTrue(w.settings["tray_hint_shown"])
+        w.show()
+        w.close()
+        self.assertEqual(len(w.tray.messages), 1)
 
 
 if __name__ == "__main__":
