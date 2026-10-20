@@ -9,6 +9,11 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Add window before each download: thumbnail, title, duration, size, the real
+  list of available video qualities with their sizes, editable name and
+  folder; Download, Later (added paused) or Cancel. Several links at once open
+  a single checklist window. "Don't ask again" option, also in Preferences.
+
 - New Qt 6 interface: dense table with real progress bars, sortable columns,
   search, detail panel, status bar with total speed and a speed graph.
 - PyDM logo and a set of icons drawn for PyDM; light and dark themes that
@@ -34,6 +39,9 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - The Tkinter interface.
 
 ### Fixed
+
+- YouTube videos failing with "The page needs to be reloaded": videos are now
+  tried without cookies first, then with the browser's cookies only if needed.
 
 - The menu entry in `pydm.desktop` now runs the `pydm` command and uses the PyDM icon.
 

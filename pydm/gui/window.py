@@ -13,9 +13,11 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFrame, QHBoxLayout
                                QToolButton, QVBoxLayout, QWidget)
 
 from .. import __version__, ipc, store
+from ..analyze import analyze
 from ..util import human
 from ..engine import BROWSERS, QUALITIES, Download, entry_from_task, make_download, task_from_entry
 from . import theme
+from .adddialog import AddDialog
 from .delegates import ProgressDelegate
 from .links import extract_urls
 from .model import DownloadFilter, DownloadModel
@@ -25,9 +27,11 @@ WIDTHS = (300, 80, 190, 90, 80, 170, 120)
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, settings, factory=make_download, overrides=None):
+    def __init__(self, settings, factory=make_download, overrides=None, analyzer=analyze):
         super().__init__()
         self.settings = settings
+        self.analyzer = analyzer
+        self.dialogs = []               # fenêtres d'ajout ouvertes
         self.overrides = dict(overrides or {})     # options -o / -n : pour cette session seulement
         self.factory = factory
         self.inbox = queue.Queue()      # messages de l'extension (thread IPC)
@@ -283,24 +287,70 @@ class MainWindow(QMainWindow):
         self.add_urls(urls)
 
     def add_urls(self, urls, headers=None, filename=None, kind="auto"):
+        if self.settings["confirm_add"]:
+            self._open_add_dialog(urls, headers, filename, kind)
+            return
         opts = {**self.settings, **self.overrides}
-        folder = os.path.expanduser(opts["folder"])
-        parts, quality, browser = opts["parts"], opts["quality"], opts["browser"]
         for url in urls:
-            placeholder = Download(url, folder, parts)
-            placeholder.status = "Analyse…"
-            self.model.add(placeholder)
+            self._enqueue(url, os.path.expanduser(opts["folder"]), opts["parts"], opts["quality"],
+                          opts["browser"], headers, filename, kind)
 
-            def detect(url=url, placeholder=placeholder):    # réseau : hors du thread de l'interface
-                try:
-                    task = self.factory(url, folder, parts, quality, browser, headers, filename, kind)
-                except Exception as e:  # noqa: BLE001
-                    placeholder.error = str(e)
-                    placeholder.status = f"Erreur : {e}"
-                    return
-                self.detected.put((placeholder, task))
-            threading.Thread(target=detect, daemon=True).start()
+    def _enqueue(self, url, folder, parts, quality, browser, headers, filename, kind,
+                 fmt=None, stem=None, start=True):
+        placeholder = Download(url, folder, parts)
+        placeholder.status = "Analyse…"
+        self.model.add(placeholder)
+
+        def detect():   # réseau : hors du thread de l'interface
+            try:
+                task = self.factory(url, folder, parts, quality, browser, headers, filename, kind,
+                                    fmt=fmt, stem=stem)
+            except Exception as e:  # noqa: BLE001
+                placeholder.error = str(e)
+                placeholder.status = f"Erreur : {e}"
+                return
+            self.detected.put((placeholder, task, start))
+        threading.Thread(target=detect, daemon=True).start()
         self._update_actions()
+
+    def _open_add_dialog(self, urls, headers, filename, kind):
+        dlg = AddDialog(self.settings, urls, headers, filename, kind, parent=self, analyzer=self.analyzer)
+        if self.overrides.get("folder"):
+            dlg.folder_edit.setText(self.overrides["folder"])
+        dlg.accepted_tasks.connect(self._accept)
+        dlg.finished.connect(lambda *_: dlg in self.dialogs and self.dialogs.remove(dlg))
+        self.dialogs.append(dlg)
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
+        QTimer.singleShot(500, lambda: self._check_front(dlg))
+
+    def _check_front(self, dlg):
+        """Sous Wayland, une fenêtre peut rester derrière le navigateur : on le signale."""
+        if dlg in self.dialogs and dlg.isVisible() and not dlg.isActiveWindow() and self.tray:
+            def bring():
+                if dlg in self.dialogs:
+                    dlg.show()
+                    dlg.raise_()
+                    dlg.activateWindow()
+            self.tray.notify("Choisissez la qualité dans PyDM", dlg.windowTitle(), on_click=bring)
+
+    def _accept(self, entries, start):
+        opts = {**self.settings, **self.overrides}
+        for e in entries:
+            folder = os.path.expanduser(e["folder"])
+            try:
+                os.makedirs(folder, exist_ok=True)
+            except OSError as err:
+                QMessageBox.warning(self, "PyDM", f"Dossier inutilisable : {folder}\n{err.strerror}")
+                return
+            stem, filename = None, e.get("filename")
+            if e["kind"] == "video":
+                stem = os.path.splitext(e["name"])[0] if e.get("name") else None
+            elif e.get("name"):
+                filename = e["name"]
+            self._enqueue(e["url"], folder, opts["parts"], e["quality"], opts["browser"], e.get("headers"),
+                          filename, e["kind"], fmt=e.get("fmt"), stem=stem, start=start)
 
     def handle_message(self, msg):
         """Appelé par le thread IPC : on se contente de transmettre au thread de l'interface."""
@@ -322,10 +372,13 @@ class MainWindow(QMainWindow):
                 self.add_urls([msg["url"]], msg.get("headers"), msg.get("filename"), msg.get("kind", "auto"))
             self.show_window()
         while not self.detected.empty():
-            placeholder, task = self.detected.get()
+            placeholder, task, start = self.detected.get()
             if placeholder in self.model.tasks():
                 self.model.replace(placeholder, task)
-                task.start()
+                if start:
+                    task.start()
+                elif not task.finished:
+                    task.status = "En pause"
                 self.dirty = True
         self.model.refresh()
         self._notify_transitions()

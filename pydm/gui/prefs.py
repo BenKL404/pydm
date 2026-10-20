@@ -73,9 +73,12 @@ class PreferencesDialog(QDialog):
         self.close_to_tray_box.setEnabled(tray_available)
         if not tray_available:
             self.close_to_tray_box.setToolTip("Barre système indisponible sur ce bureau")
+        self.confirm_box = QCheckBox("Demander avant chaque téléchargement (qualité, nom, dossier)")
+        self.confirm_box.setChecked(settings["confirm_add"])
         self.autostart_box = QCheckBox("Démarrer PyDM avec la session")
         self.autostart_box.setChecked(settings["autostart"])
-        for box in (self.clipboard_box, self.notify_box, self.close_to_tray_box, self.autostart_box):
+        for box in (self.confirm_box, self.clipboard_box, self.notify_box, self.close_to_tray_box,
+                    self.autostart_box):
             form.addRow("", box)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -100,5 +103,6 @@ class PreferencesDialog(QDialog):
             close_to_tray=self.close_to_tray_box.isChecked() if self.close_to_tray_box.isEnabled()
             else self.settings["close_to_tray"],
             autostart=self.autostart_box.isChecked(),
+            confirm_add=self.confirm_box.isChecked(),
         )
         return result

@@ -26,6 +26,11 @@ over a video, and PyDM takes over.
   and Opera: download interception, a "Download this video" button on players,
   a context menu entry, and cookies and referrer forwarding so downloads that
   require a login work.
+- **See before you download**: every link opens a compact window showing the
+  file or video (thumbnail, title, duration, size) with the real list of
+  available video qualities and their sizes (1080p, 720p…, audio-only MP3),
+  plus name and folder; download now, later (paused) or cancel. Several links
+  at once open a single checklist window.
 - **A modern, dense interface** (Qt 6): real progress bars, light and dark
   themes that follow the system, sortable columns, search, a detail panel,
   right-click menu, keyboard shortcuts and drag-and-drop of links.

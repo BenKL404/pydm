@@ -66,6 +66,14 @@ version `.deb` ou `.rpm` du navigateur. Firefox en Snap (Ubuntu) fonctionne.
 
 ## 4. L'interface
 
+- **Avant chaque téléchargement**, une fenêtre montre ce qui va être téléchargé :
+  pour une vidéo, la miniature, le titre, la durée et le menu **Qualité** avec les
+  qualités réellement disponibles et leur taille (1080p, 720p…, Audio seul MP3) ;
+  pour un fichier, sa taille, son type et si la reprise est possible. On peut changer
+  le nom et le dossier, puis **Télécharger**, **Plus tard** (ajouté en pause) ou
+  **Annuler**. Plusieurs liens d'un coup ouvrent une seule fenêtre, avec une case par
+  lien. « Ne plus demander » revient au téléchargement direct (à réactiver dans les
+  préférences).
 - **Coller un lien** dans le champ du haut (ou n'importe où avec Ctrl+V), ou le
   **glisser-déposer** sur la fenêtre ; plusieurs liens à la fois sont acceptés.
 - Les menus **Qualité** et **Cookies** s'appliquent aux vidéos de streaming.
@@ -78,7 +86,9 @@ version `.deb` ou `.rpm` du navigateur. Firefox en Snap (Ubuntu) fonctionne.
 - **Fermer la fenêtre** laisse PyDM dans la barre système (désactivable dans les
   préférences) ; une notification signale chaque téléchargement terminé ou en échec.
 - **Préférences** (menu ☰) : dossier, connexions, thème clair / sombre / système,
-  presse-papiers, notifications, démarrage avec la session.
+  fenêtre d'ajout, presse-papiers, notifications, démarrage avec la session.
+- Pour les vidéos, PyDM essaie d'abord **sans vos cookies** (YouTube refuse souvent
+  une session connectée), puis avec, seulement si c'est nécessaire.
 
 ## Limites
 - Les vidéos protégées par DRM (Netflix, Disney+, Prime Video, Spotify…) ne

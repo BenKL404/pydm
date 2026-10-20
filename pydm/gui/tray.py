@@ -13,6 +13,7 @@ class Tray:
     def __init__(self, window):
         self.window = window
         self._folder = None
+        self._on_click = None
         self.icon = QSystemTrayIcon(theme.logo(), window)
         menu = QMenu(window)
         menu.addAction("Afficher PyDM", window.show_window)
@@ -35,7 +36,9 @@ class Tray:
                 self.window.show_window()
 
     def _message_clicked(self):
-        if self._folder:
+        if self._on_click:
+            self._on_click()
+        elif self._folder:
             QDesktopServices.openUrl(QUrl.fromLocalFile(self._folder))
 
     def update(self, running, speed):
@@ -44,6 +47,6 @@ class Tray:
             tip += f" — {running} en cours · ↓ {human(speed)}/s"
         self.icon.setToolTip(tip)
 
-    def notify(self, title, body, folder=None):
-        self._folder = folder
+    def notify(self, title, body, folder=None, on_click=None):
+        self._folder, self._on_click = folder, on_click
         self.icon.showMessage(title, body, theme.logo(), 6000)

@@ -39,5 +39,12 @@ class PrefsTest(unittest.TestCase):
         self.assertEqual(settings["theme"], "system")        # l'original n'est pas modifié
 
 
+    def test_case_confirmation(self):
+        dlg = self.prefs.PreferencesDialog(dict(self.store.DEFAULTS), tray_available=True)
+        self.assertTrue(dlg.confirm_box.isChecked())
+        dlg.confirm_box.setChecked(False)
+        self.assertIs(dlg.result_settings()["confirm_add"], False)
+
+
 if __name__ == "__main__":
     unittest.main()

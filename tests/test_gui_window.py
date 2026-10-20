@@ -35,8 +35,9 @@ class Factory:
         self.calls = []
 
     def __call__(self, url, folder, parts=8, quality="Meilleure", browser="Aucun",
-                 headers=None, filename=None, kind="auto"):
-        self.calls.append({"url": url, "kind": kind, "quality": quality, "folder": folder, "parts": parts})
+                 headers=None, filename=None, kind="auto", fmt=None, stem=None):
+        self.calls.append({"url": url, "kind": kind, "quality": quality, "folder": folder, "parts": parts,
+                           "fmt": fmt, "stem": stem, "filename": filename})
         return FakeDownload(url, folder, parts)
 
 
@@ -52,7 +53,7 @@ class WindowCase(unittest.TestCase):
             self.addCleanup(patcher.stop)
         from pydm import store
         from pydm.gui.window import MainWindow
-        self.settings = dict(store.DEFAULTS, folder=self.cfg)
+        self.settings = dict(store.DEFAULTS, folder=self.cfg, confirm_add=False)
         self.factory = Factory()
         self.MainWindow = MainWindow
 
@@ -231,7 +232,7 @@ class FakeTray:
     def __init__(self):
         self.messages = []
 
-    def notify(self, title, body, folder=None):
+    def notify(self, title, body, folder=None, on_click=None):
         self.messages.append((title, body))
 
     def update(self, running, speed):
@@ -282,6 +283,76 @@ class TrayTest(WindowCase):
         w.show()
         w.close()
         self.assertEqual(len(w.tray.messages), 1)
+
+
+def entry(url="https://a.fr/x.iso", kind="file", name="x.iso", folder=None, fmt=None, quality="Meilleure"):
+    return {"url": url, "kind": kind, "folder": folder, "name": name, "fmt": fmt, "quality": quality,
+            "headers": None, "filename": None}
+
+
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class AddFlowTest(WindowCase):
+    def window(self, **kw):
+        self.settings["confirm_add"] = True
+        return super().window(analyzer=lambda *a, **k: {"kind": "error", "error": "test", "drm": False,
+                                                         "choices": [], "name": None}, **kw)
+
+    def accept(self, w, entries, start=True, dialog=0):
+        w.dialogs[dialog].accepted_tasks.emit(entries, start)
+        self.assertTrue(self.tick_until(w, lambda: w.model.rowCount() and
+                                        all(isinstance(t, FakeDownload) for t in w.model.tasks())))
+
+    def test_dialogue_ouvert_sans_tache(self):
+        w = self.window()
+        w.add_urls(["https://a.fr/x.zip"])
+        self.assertEqual(len(w.dialogs), 1)
+        self.assertEqual(w.model.rowCount(), 0)
+        self.assertEqual(self.factory.calls, [])
+
+    def test_telecharger_cree_la_tache(self):
+        w = self.window()
+        w.add_urls(["https://a.fr/v"])
+        self.accept(w, [entry("https://a.fr/v", "video", "Clip.mp4", self.cfg, fmt="137+140")])
+        self.assertTrue(w.model.task(0).started)
+        self.assertEqual(self.factory.calls[0]["fmt"], "137+140")
+
+    def test_plus_tard_en_pause(self):
+        w = self.window()
+        w.add_urls(["https://a.fr/x.iso"])
+        self.accept(w, [entry(folder=self.cfg)], start=False)
+        t = w.model.task(0)
+        self.assertFalse(t.started)
+        self.assertEqual(t.status, "En pause")
+
+    def test_deux_messages_deux_dialogues(self):
+        w = self.window()
+        w.handle_message({"action": "add", "url": "https://a.fr/1.zip"})
+        w.handle_message({"action": "add", "url": "https://a.fr/2.zip"})
+        w.tick()
+        self.assertEqual(len(w.dialogs), 2)
+        self.accept(w, [entry("https://a.fr/2.zip", name="2.zip", folder=self.cfg)], dialog=1)
+        self.assertEqual([t.url for t in w.model.tasks()], ["https://a.fr/2.zip"])
+
+    def test_dossier_tilde(self):
+        with tempfile.TemporaryDirectory() as home, mock.patch.dict(os.environ, {"HOME": home}):
+            w = self.window()
+            w.add_urls(["https://a.fr/x.iso"])
+            self.accept(w, [entry(folder="~/pydm-test")])
+            self.assertEqual(self.factory.calls[0]["folder"], os.path.join(home, "pydm-test"))
+            self.assertTrue(os.path.isdir(os.path.join(home, "pydm-test")))
+
+    def test_stem_video(self):
+        w = self.window()
+        w.add_urls(["https://a.fr/v"])
+        self.accept(w, [entry("https://a.fr/v", "video", "Ma vidéo.mp4", self.cfg)])
+        self.assertEqual(self.factory.calls[0]["stem"], "Ma vidéo")
+        self.assertIsNone(self.factory.calls[0]["filename"])
+
+    def test_nom_de_fichier(self):
+        w = self.window()
+        w.add_urls(["https://a.fr/x.iso"])
+        self.accept(w, [entry(name="renommé.iso", folder=self.cfg)])
+        self.assertEqual((self.factory.calls[0]["filename"], self.factory.calls[0]["stem"]), ("renommé.iso", None))
 
 
 if __name__ == "__main__":
