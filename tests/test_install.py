@@ -39,5 +39,38 @@ class InstallTest(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
 
 
+    def install(self, home, **extra):
+        env = dict(os.environ, HOME=home, **extra)
+        env.pop("PYDM_CONFIG_DIR", None)
+        return subprocess.run(["sh", os.path.join(ROOT, "install.sh")], env=env, capture_output=True,
+                              text=True, timeout=300), env
+
+    def test_hors_ligne_avec_pyside6_deja_la(self):
+        with tempfile.TemporaryDirectory() as home:
+            r, _ = self.install(home, PYDM_SKIP_PIP="1")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            py = os.path.join(home, ".local/share/pydm/venv/bin/python")
+            site = subprocess.run([py, "-c", "import sysconfig; print(sysconfig.get_paths()['purelib'])"],
+                                  capture_output=True, text=True).stdout.strip()
+            os.makedirs(os.path.join(site, "PySide6"))
+            open(os.path.join(site, "PySide6", "__init__.py"), "w").close()
+            r, _ = self.install(home, PIP_INDEX_URL="http://127.0.0.1:9/simple", PIP_RETRIES="0",
+                                PIP_TIMEOUT="1", PIP_DISABLE_PIP_VERSION_CHECK="1")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("hors ligne", r.stdout)
+
+    def test_dossier_personnel_avec_caracteres_speciaux(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = os.path.join(tmp, 'mon "dossier" $HOME')
+            os.makedirs(home)
+            r, env = self.install(home, PYDM_SKIP_PIP="1")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            launcher = os.path.join(home, ".local/bin/pydm")
+            r = subprocess.run([launcher, "--help"], env=env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            with open(os.path.join(home, ".mozilla/native-messaging-hosts/com.pydm.host.json")) as f:
+                self.assertEqual(json.load(f)["path"], os.path.join(home, ".local/share/pydm/pydm_host.py"))
+
+
 if __name__ == "__main__":
     unittest.main()

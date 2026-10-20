@@ -174,8 +174,10 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === "pydm-link") job = { url: info.linkUrl, referer: pageUrl, kind: "auto" };
   else if (info.menuItemId === "pydm-media" && info.mediaType === "image") job = { url: info.srcUrl, referer: pageUrl, kind: "file" };
   else job = await resolveVideo(tab?.id ?? -1, pageUrl, info.srcUrl);
+  // le titre de l'onglet ne décrit que la vidéo de la page, pas un lien ou une image
+  const title = info.menuItemId === "pydm-link" || info.mediaType === "image" ? undefined : tab?.title;
   try {
-    await sendToPyDM({ ...job, title: tab?.title });
+    await sendToPyDM({ ...job, title });
     flashBadge("✓", "#188038");
   } catch (e) {
     console.warn(e);

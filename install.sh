@@ -23,8 +23,12 @@ fi
 if [ -z "$PYDM_SKIP_PIP" ]; then
     echo "Installation / mise à jour de PySide6 et yt-dlp (peut prendre quelques minutes)…"
     if ! "$DEST/venv/bin/python" -m pip install -q -U PySide6 yt-dlp; then
-        echo "✗ Échec de pip : vérifiez la connexion Internet puis relancez ./install.sh"
-        exit 1
+        if "$DEST/venv/bin/python" -c "import PySide6" 2>/dev/null; then
+            echo "⚠ Mise à jour impossible (hors ligne ?) : PySide6 est déjà installé, on continue."
+        else
+            echo "✗ Échec de pip : vérifiez la connexion Internet puis relancez ./install.sh"
+            exit 1
+        fi
     fi
 fi
 
@@ -34,10 +38,18 @@ find "$DEST/pydm" -name __pycache__ -prune -exec rm -rf {} +
 cp "$SRC/pydm_host.py" "$DEST/"
 chmod +x "$DEST/pydm_host.py"
 rm -f "$HOME/.local/bin/pydm"
-cat > "$HOME/.local/bin/pydm" <<EOF
-#!/bin/sh
-PYTHONPATH="$DEST" exec "$DEST/venv/bin/python" -m pydm "\$@"
-EOF
+# lanceur et entrée de menu écrits par Python : chemins correctement protégés (« " », « $ »…)
+python3 - "$DEST" "$HOME/.local/bin/pydm" "$SRC/pydm.desktop" "$HOME/.local/share/applications/pydm.desktop" <<'PY'
+import re, shlex, sys
+dest, launcher, desktop_src, desktop_out = sys.argv[1:]
+with open(launcher, "w") as f:
+    f.write(f'#!/bin/sh\nPYTHONPATH={shlex.quote(dest)} exec {shlex.quote(dest + "/venv/bin/python")} -m pydm "$@"\n')
+exec_path = re.sub(r'(["`$\\])', r"\\\1", launcher).replace("\\", "\\\\")   # règles des fichiers .desktop
+with open(desktop_src) as f:
+    text = re.sub(r"^Exec=.*$", lambda m: f'Exec="{exec_path}"', f.read(), flags=re.M)
+with open(desktop_out, "w") as f:
+    f.write(text)
+PY
 chmod +x "$HOME/.local/bin/pydm"
 
 ICONS="$HOME/.local/share/icons/hicolor"
@@ -52,20 +64,15 @@ if [ -f "$SRC/pydm/gui/icons/logo.svg" ]; then
     mkdir -p "$ICONS/scalable/apps"
     cp "$SRC/pydm/gui/icons/logo.svg" "$ICONS/scalable/apps/pydm.svg"
 fi
-sed "s|^Exec=.*|Exec=\"$HOME/.local/bin/pydm\"|" "$SRC/pydm.desktop" > "$HOME/.local/share/applications/pydm.desktop"
 echo "PyDM installé dans $DEST (commande : pydm)"
 
 write_manifest() {   # $1 = dossier, $2 = clé (allowed_origins / allowed_extensions), $3 = valeur
     mkdir -p "$1"
-    cat > "$1/$HOST_NAME.json" <<EOF
-{
-  "name": "$HOST_NAME",
-  "description": "PyDM - gestionnaire de téléchargement",
-  "path": "$DEST/pydm_host.py",
-  "type": "stdio",
-  "$2": ["$3"]
-}
-EOF
+    python3 -c 'import json, sys
+folder, host, key, value, path = sys.argv[1:]
+with open(f"{folder}/{host}.json", "w") as f:
+    json.dump({"name": host, "description": "PyDM - gestionnaire de téléchargement", "path": path,
+               "type": "stdio", key: [value]}, f, indent=2)' "$1" "$HOST_NAME" "$2" "$3" "$DEST/pydm_host.py"
     echo "  ✓ $1"
 }
 
