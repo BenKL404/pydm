@@ -11,6 +11,7 @@ class FakeTask:
         self.running, self.status, self.error = running, status, error
         self.url = url or f"https://exemple.fr/{name}"
         self.added = time.time()
+        self.want = "stop"      # les tests de modèle ne passent pas par la file
 
     @property
     def finished(self):

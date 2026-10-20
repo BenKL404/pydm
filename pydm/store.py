@@ -7,6 +7,7 @@ import tempfile
 
 from . import ipc
 from .engine import BROWSERS, QUALITIES
+from .scheduler import parse_hhmm
 
 
 def default_folder():
@@ -26,12 +27,21 @@ DEFAULTS = {
     "autostart": False,
     "tray_hint_shown": False,
     "confirm_add": True,
+    "max_active": 3,
+    "speed_on": False,
+    "speed_kbps": 2048,
+    "schedule_on": False,
+    "schedule_start": "01:00",
+    "schedule_end": "07:00",
+    "end_action": "none",
     "sort_by_type": True,
     "category_dirs": {"video": "Vidéos", "music": "Musique", "document": "Documents", "image": "Images",
                       "archive": "Archives", "program": "Programmes"},
     "window": {},
 }
-CHOICES = {"theme": ("system", "light", "dark"), "quality": tuple(QUALITIES), "browser": BROWSERS}
+CHOICES = {"theme": ("system", "light", "dark"), "quality": tuple(QUALITIES), "browser": BROWSERS,
+           "end_action": ("none", "quit", "suspend", "poweroff")}
+RANGES = {"parts": (1, 32), "max_active": (1, 10), "speed_kbps": (16, 1_000_000)}
 
 
 def _path(name, config_dir):
@@ -73,8 +83,10 @@ def _valid(key, value):
     default = DEFAULTS[key]
     if type(value) is not type(default):    # bool et int ne se confondent pas
         return False
-    if key == "parts":
-        return 1 <= value <= 32
+    if key in RANGES:
+        return RANGES[key][0] <= value <= RANGES[key][1]
+    if key in ("schedule_start", "schedule_end"):
+        return parse_hhmm(value) is not None
     return key not in CHOICES or value in CHOICES[key]
 
 

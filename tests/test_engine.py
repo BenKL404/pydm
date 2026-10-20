@@ -101,6 +101,41 @@ class DownloadTest(unittest.TestCase):
         self.assertEqual(d2.folder, folder)
         self.assertEqual(self.read(d2), self.data)
 
+    def limit(self, rate):
+        from pydm.scheduler import LIMITER
+        LIMITER.rate = rate
+        self.addCleanup(setattr, LIMITER, "rate", 0)
+        return LIMITER
+
+    def test_limite_de_vitesse(self):
+        data = os.urandom(4 * 1024 * 1024)
+        url, stop = serve(data)
+        self.addCleanup(stop)
+        self.limit(2 * 1024 * 1024)
+        d = Download(url + "/l.bin", self.dir, parts=4)
+        t = time.time()
+        d.start()
+        wait(d, 30)
+        self.assertGreaterEqual(time.time() - t, 1.5)
+        self.assertEqual(self.read(d), data)
+
+    def test_limite_activee_en_cours(self):
+        url, stop = serve(os.urandom(16 * 1024 * 1024), delay=0.05)    # ≈ 5 Mo/s sans limite
+        self.addCleanup(stop)
+        d = Download(url + "/g.bin", self.dir, parts=4)
+        self.addCleanup(d.wait, 10)
+        self.addCleanup(d.pause)
+        d.start()
+        end = time.time() + 20
+        while d.done <= 1024 * 1024 and time.time() < end:
+            time.sleep(0.02)
+        self.limit(1024 * 1024)
+        time.sleep(0.5)                 # le seau se vide
+        before, t0 = d.done, time.time()
+        time.sleep(2)
+        speed = (d.done - before) / (time.time() - t0)
+        self.assertLessEqual(speed, 1.6 * 1024 * 1024)
+
     def test_serveur_sans_plages(self):
         d = Download(self.start_server(ranges=False), self.dir, parts=4)
         d.start()

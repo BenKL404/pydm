@@ -152,6 +152,14 @@ class VideoCookiesTest(unittest.TestCase):
         self.assertEqual((v.folder, a.folder), ("/dl/video", "/dl/music"))
 
 
+    def test_hook_freine(self):
+        d = VideoDownload("https://vimeo.com/1", "/tmp")
+        with mock.patch("pydm.engine.LIMITER") as lim:
+            for n in (1000, 3000, 500):
+                d._hook({"status": "downloading", "downloaded_bytes": n})
+        self.assertEqual([c.args[0] for c in lim.consume.call_args_list], [1000, 2000, 500])
+
+
 class AttemptsTest(unittest.TestCase):
     def test_ytdlp_attempts_sans_cookies(self):
         self.assertEqual(list(ytdlp_attempts("https://a.fr/v", {"User-Agent": "x"}, "Aucun")), [{}])

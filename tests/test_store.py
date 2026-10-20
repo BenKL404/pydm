@@ -48,6 +48,25 @@ class SettingsTest(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.dir, "session.json.bak")))
 
 
+    def test_reglages_file(self):
+        d = store.DEFAULTS
+        self.assertEqual((d["max_active"], d["speed_on"], d["speed_kbps"], d["schedule_on"],
+                          d["schedule_start"], d["schedule_end"], d["end_action"]),
+                         (3, False, 2048, False, "01:00", "07:00", "none"))
+        self.write("settings.json", json.dumps({"max_active": 0, "speed_kbps": 5, "schedule_start": "25:00",
+                                                "end_action": "reboot", "schedule_end": "23:30"}))
+        s = store.load_settings(self.dir)
+        self.assertEqual((s["max_active"], s["speed_kbps"], s["schedule_start"], s["end_action"], s["schedule_end"]),
+                         (3, 2048, "01:00", "none", "23:30"))
+
+    def test_session_want(self):
+        for want, expected in (("now", "now"), ("later", "later"), ("force", "now"), ("stop", "stop")):
+            t = Download("https://a.fr/x", "/tmp")
+            t.want = want
+            self.assertEqual(task_from_entry(json.loads(json.dumps(entry_from_task(t)))).want, expected)
+        self.assertEqual(task_from_entry({"url": "https://a.fr/x", "folder": "/tmp"}).want, "stop")
+
+
 class FolderForTest(unittest.TestCase):
     def settings(self, **kw):
         return dict(store.DEFAULTS, folder="/dl", **kw)

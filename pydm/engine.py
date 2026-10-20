@@ -14,6 +14,7 @@ from datetime import datetime
 from email.message import Message
 
 from .filetypes import category
+from .scheduler import LIMITER
 from .util import unique_path
 
 CHUNK = 64 * 1024
@@ -105,6 +106,7 @@ class Download(_Task):
         self.error = None
         self.speed = 0.0
         self.added = time.time()
+        self.want = "now"      # now, later, force, stop (voir scheduler)
         self.lock = threading.Lock()
         self.stop_evt = threading.Event()
         self._thread = None
@@ -221,6 +223,7 @@ class Download(_Task):
                         buf = r.read(CHUNK)
                         if not buf:
                             break
+                        LIMITER.consume(len(buf), self.stop_evt)
                         with self.lock:      # réserve la zone (le segment peut être redécoupé)
                             if seg[1] >= 0:
                                 buf = buf[:max(0, self._remaining(seg))]
@@ -337,7 +340,10 @@ class VideoDownload(_Task):
         self.speed = 0.0
         self.error = None
         self.added = time.time()
+        self.want = "now"      # now, later, force, stop (voir scheduler)
         self.stop_evt = threading.Event()
+        self._rate_lock = threading.Lock()
+        self._last_bytes = 0
         self.status = "Terminé" if name and os.path.exists(self.path) else (
             "En pause" if name else "En attente")
 
@@ -360,7 +366,14 @@ class VideoDownload(_Task):
         if title and not self.name:
             self.name = title
         if d["status"] == "downloading":
-            self.done = d.get("downloaded_bytes") or 0
+            got = d.get("downloaded_bytes") or 0
+            with self._rate_lock:       # yt-dlp appelle le hook depuis plusieurs threads
+                if got < self._last_bytes:      # fichier suivant (audio après vidéo)
+                    self._last_bytes = 0
+                delta, self._last_bytes = got - self._last_bytes, got
+            if delta > 0:
+                LIMITER.consume(delta, self.stop_evt)
+            self.done = got
             self.size = d.get("total_bytes") or d.get("total_bytes_estimate") or self.size
             self.speed = d.get("speed") or 0.0
             if d.get("fragment_count"):
@@ -518,7 +531,7 @@ def make_download(url, folder, parts=8, quality="Meilleure", browser="Aucun",
 def entry_from_task(t):
     """Entrée de session (format JSON) décrivant la tâche."""
     e = {"url": t.url, "folder": t.folder, "parts": t.parts, "name": t.name, "headers": t.headers,
-         "added": datetime.fromtimestamp(t.added).isoformat(timespec="seconds")}
+         "added": datetime.fromtimestamp(t.added).isoformat(timespec="seconds"), "want": t.want}
     if isinstance(t, VideoDownload):
         e.update(kind="video", quality=t.quality, browser=t.browser, fmt=t.fmt, stem=t.stem)
     return e
@@ -532,6 +545,8 @@ def task_from_entry(e):
                           e.get("fmt"), e.get("stem"))
     else:
         t = Download(e["url"], e["folder"], e.get("parts", 8), e.get("name"), e.get("headers"))
+    want = e.get("want")
+    t.want = "now" if want in ("now", "force") else ("later" if want == "later" else "stop")
     try:
         t.added = datetime.fromisoformat(e["added"]).timestamp()
     except (KeyError, TypeError, ValueError):
