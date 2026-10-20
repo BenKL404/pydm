@@ -54,6 +54,11 @@ class AnalysisCache:
             while len(self._items) > self.max_items:
                 self._items.popitem(last=False)
 
+    def clear(self):
+        """Oublie les analyses (les cookies utilisés ont changé)."""
+        with self._lock:
+            self._items.clear()
+
     def ready(self, url):
         with self._lock:
             return self._fresh(video_key(url)) is not None

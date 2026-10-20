@@ -5,6 +5,7 @@ import os
 import queue
 import threading
 import time
+import urllib.parse
 from datetime import datetime
 
 from PySide6.QtCore import QByteArray, QEvent, QItemSelection, QItemSelectionModel, QSize, Qt, QTimer, QUrl
@@ -32,7 +33,8 @@ def video_stem(name):
     if not n or (n.startswith(".") and n[1:].lower() in MEDIA_EXTS):
         return None
     return n
-from ..engine import BROWSERS, QUALITIES, Download, entry_from_task, make_download, task_from_entry
+from ..engine import (BROWSERS, QUALITIES, VIDEO_HOSTS, Download, entry_from_task, make_download,
+                      task_from_entry)
 from . import theme
 from .adddialog import AddDialog
 from .delegates import ProgressDelegate
@@ -160,7 +162,7 @@ class MainWindow(QMainWindow):
         self.cookies.addItems(list(BROWSERS))
         self.cookies.setCurrentText(self.settings["browser"])
         self.cookies.setToolTip("Utiliser les cookies de ce navigateur")
-        self.cookies.currentTextChanged.connect(lambda v: self._set("browser", v))
+        self.cookies.currentTextChanged.connect(self._browser_changed)
         h.addWidget(self.cookies)
         go = QPushButton("Télécharger")
         go.setObjectName("primary")
@@ -335,8 +337,19 @@ class MainWindow(QMainWindow):
                 t.status = "En pause"
             self.model.add(t)
 
-    def save_session(self):
-        store.save_session([entry_from_task(t) for t in self.model.tasks() if t.status != "Analyse…"])
+    def save_session(self, pending=False):
+        entries = [entry_from_task(t) for t in self.model.tasks() if t not in self._placeholders]
+        if pending:                 # à la fermeture : liens encore en analyse ou pas encore traités
+            urls = [(t.url, t.folder, "auto") for t in self.model.tasks() if t in self._placeholders]
+            while not self.inbox.empty():
+                msg = self.inbox.get()
+                if isinstance(msg, dict) and msg.get("action") == "add" and msg.get("url"):
+                    urls.append((msg["url"], store.folder_for("other", self.settings), msg.get("kind", "auto")))
+            for url, folder, kind in urls:
+                video = kind == "video" or (kind == "auto" and VIDEO_HOSTS.search(urllib.parse.urlparse(url).hostname or ""))
+                entries.append({"url": url, "folder": folder, "parts": self.settings["parts"], "name": None,
+                                "headers": {}, "want": "now", **({"kind": "video"} if video else {})})
+        store.save_session(entries)
 
     # --- ajout ---------------------------------------------------------------
     def download_link(self):
@@ -505,7 +518,10 @@ class MainWindow(QMainWindow):
                 return
             stem, filename = None, e.get("filename")
             if e["kind"] == "video":       # même titre déjà présent : « titre (1) »
-                stem = video_stem(unique_path(folder, e["name"])) if e.get("name") else None
+                name = e.get("name") or ""
+                if name and e.get("ext") and video_stem(name) == name.strip():     # nom sans extension
+                    name = f"{name.strip()}.{e['ext']}"
+                stem = video_stem(unique_path(folder, name)) if name else None
             elif e.get("name"):
                 filename = e["name"]
             route = self._route(opts, folder) if e.get("auto_folder") else None    # type encore inconnu
@@ -515,20 +531,38 @@ class MainWindow(QMainWindow):
 
     def handle_message(self, msg):
         """Appelé par le thread IPC : on se contente de transmettre au thread de l'interface."""
+        if not isinstance(msg, dict):
+            return {"ok": False, "error": "message invalide"}
         self.inbox.put(msg)
         return {"ok": True}
+
+    def _browser_changed(self, value):
+        self._set("browser", value)
+        self.cache.clear()          # analyses faites avec d'autres cookies
+
+    def on_color_scheme_changed(self):
+        if self.settings["theme"] == "system":
+            theme.apply(QGuiApplication.instance(), "system")
+            self.refresh_icons()
+
+    def on_about_to_quit(self):
+        """Fermeture de session (ou fin de l'application) : enregistrer la fenêtre et la liste."""
+        self._save_state()
+        self.save_session()
 
     def _clipboard_changed(self):
         if not self.settings["clipboard"] or self.link.text():
             return
-        urls = extract_urls(QGuiApplication.clipboard().text())
-        if len(urls) == 1:
-            self.link.setText(urls[0])
+        text = QGuiApplication.clipboard().text().strip()
+        if extract_urls(text) == [text]:        # seulement si le texte copié est un lien, rien d'autre
+            self.link.setText(text)
 
     # --- boucle périodique ----------------------------------------------------
     def tick(self):
         while not self.inbox.empty():
             msg = self.inbox.get()
+            if not isinstance(msg, dict):
+                continue
             if msg.get("action") == "prefetch" and msg.get("url"):
                 if self.settings["confirm_add"]:    # sinon le résultat ne servirait pas
                     self.cache.prefetch(msg["url"], msg.get("headers"), self.settings["browser"])
@@ -890,7 +924,7 @@ class MainWindow(QMainWindow):
     def quit_app(self):
         self.timer.stop()
         self._save_state()
-        self.save_session()
+        self.save_session(pending=True)
         tasks = self.model.tasks()
         for t in tasks:
             t.pause()

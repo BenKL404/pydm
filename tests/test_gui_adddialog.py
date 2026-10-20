@@ -327,5 +327,30 @@ class ThumbnailTest(DialogCase):
         self.assertEqual(dlg.thumb.pixmap().width(), 128)
 
 
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class DialogMinorTest(DialogCase):
+    def test_barre_oblique_dans_le_nom(self):
+        dlg = self.dialog(result(kind="file", name="x.zip", choices=[]), urls=["https://a.fr/x.zip"])
+        self.wait_filled(dlg)
+        dlg.name_edit.setText("dossier/x.zip")
+        self.assertEqual(dlg.collect()[0]["name"], "dossier_x.zip")
+
+    def test_extension_transmise(self):
+        dlg = self.dialog(result())
+        self.wait_filled(dlg)
+        dlg.quality_box.setCurrentIndex(2)
+        self.assertEqual(dlg.collect()[0]["ext"], "mp3")
+
+    def test_miniature_illisible_garde_la_bonne(self):
+        from PySide6.QtGui import QColor, QPixmap
+        dlg = self.dialog(result(thumbnail=b"pas une image"))
+        good = QPixmap(128, 72)
+        good.fill(QColor("#123456"))
+        dlg.thumb.setPixmap(good)
+        dlg.has_thumb = True
+        self.wait_filled(dlg)
+        self.assertEqual(dlg.thumb.pixmap().toImage().pixelColor(5, 5).name(), "#123456")
+
+
 if __name__ == "__main__":
     unittest.main()

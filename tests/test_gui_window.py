@@ -742,5 +742,80 @@ class PrefetchDirectTest(PrefetchTest):
         self.assertEqual(self.analyzer.calls, [])
 
 
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class MinorFixesTest(WindowCase):
+    def test_lien_dossier_apostrophe(self):
+        import html
+        from PySide6.QtCore import QUrl
+        w = self.window()
+        t = FakeDownload("https://a.fr/x.mp3", "/tmp/Musique d'été")
+        w.detail.show_task(t)
+        href = html.escape(QUrl.fromLocalFile("/tmp/Musique d'été").toString(), quote=True)
+        self.assertIn(f'href="{href}"', w.detail.text())
+
+    def test_fermeture_de_session_enregistre(self):
+        from pydm import store
+        w = self.window()
+        w.on_about_to_quit()
+        saved = store.load_settings(self.cfg)
+        self.assertTrue(saved["window"].get("geometry"))
+        self.assertTrue(os.path.exists(os.path.join(self.cfg, "session.json")))
+
+    def test_changement_de_theme_du_systeme(self):
+        calls = []
+        w = self.window()
+        with mock.patch("pydm.gui.window.theme.apply", side_effect=lambda *a: calls.append("apply")), \
+                mock.patch.object(w, "refresh_icons", side_effect=lambda: calls.append("icons")):
+            self.settings["theme"] = "system"
+            w.on_color_scheme_changed()
+            self.settings["theme"] = "dark"
+            w.on_color_scheme_changed()
+        self.assertEqual(calls, ["apply", "icons"])
+
+    def test_presse_papiers_lien_seul(self):
+        from PySide6.QtGui import QGuiApplication
+        w = self.window()
+        QGuiApplication.clipboard().setText("Voir https://a.fr/x.zip pour le fichier")
+        w._clipboard_changed()
+        self.assertEqual(w.link.text(), "")
+        QGuiApplication.clipboard().setText("  https://a.fr/x.zip ")
+        w._clipboard_changed()
+        self.assertEqual(w.link.text(), "https://a.fr/x.zip")
+
+    def test_message_mal_forme(self):
+        w = self.window()
+        self.assertFalse(w.handle_message(["pas", "un", "objet"])["ok"])
+        w.inbox.put("texte")
+        w.tick()                                    # ne lève pas
+        self.assertEqual(w.model.rowCount(), 0)
+
+    def test_navigateur_change_vide_la_memoire(self):
+        w = self.window(analyzer=lambda *a, **k: {"kind": "file", "name": "x", "choices": []})
+        w.cache.get("https://a.fr/x")
+        self.assertTrue(w.cache.ready("https://a.fr/x"))
+        w.cookies.setCurrentText("firefox")
+        self.assertFalse(w.cache.ready("https://a.fr/x"))
+
+    def test_nom_sans_extension_unique(self):
+        open(os.path.join(self.cfg, "Mr. Smith.mp4"), "w").close()
+        w = self.window()
+        w._accept([{"url": "https://a.fr/v", "kind": "video", "folder": self.cfg, "name": "Mr. Smith", "ext": "mp4",
+                    "fmt": None, "quality": "Meilleure", "headers": None, "filename": None}], True)
+        self.assertTrue(self.tick_until(w, lambda: self.factory.calls))
+        self.assertEqual(self.factory.calls[0]["stem"], "Mr. Smith (1)")
+
+    def test_lien_recu_avant_quitter_garde(self):
+        import json as _json
+        w = self.window()
+        w.handle_message({"action": "add", "url": "https://www.youtube.com/watch?v=q", "kind": "video"})
+        w.add_urls(["https://a.fr/en-analyse.zip"])           # ligne « Analyse… » encore en cours
+        with mock.patch("pydm.gui.window.QGuiApplication.quit"):
+            w.quit_app()
+        with open(os.path.join(self.cfg, "session.json")) as f:
+            entries = {e["url"]: e for e in _json.load(f)}
+        self.assertEqual(entries["https://www.youtube.com/watch?v=q"]["kind"], "video")
+        self.assertIn("https://a.fr/en-analyse.zip", entries)
+
+
 if __name__ == "__main__":
     unittest.main()

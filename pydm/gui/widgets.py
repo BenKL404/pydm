@@ -52,7 +52,8 @@ class DetailPanel(QWidget):
         folder = html.escape(task.folder)
         rows = [
             ("Lien", html.escape(task.url)),
-            ("Dossier", f"<a href='{QUrl.fromLocalFile(task.folder).toString()}'>{folder}</a>"),
+            ("Dossier", f'<a href="{html.escape(QUrl.fromLocalFile(task.folder).toString(), quote=True)}">'
+                        f"{folder}</a>"),
             ("Taille", human(task.size)),
             ("Reçu", human(task.done)),
             ("Connexions", f"{task.active_connections} actives / {task.parts} prévues"),

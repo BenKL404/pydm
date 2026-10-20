@@ -20,7 +20,7 @@ LIGHT = {"window": "#f4f5f7", "base": "#ffffff", "alt": "#f7f8fa", "button": "#e
          "text": "#111827", "muted": "#6b7280", "border": "#d8dce2", "accent": "#0891b2",
          "select": "#cff4fc", "select_text": "#0f172a"}
 
-_state = {"dark": False, "mode": "system", "connected": False, "colors": LIGHT}
+_state = {"dark": False, "mode": "system", "colors": LIGHT}
 _cache = {}
 
 
@@ -124,11 +124,7 @@ def apply(app, mode="system"):
     """Applique le style Fusion avec la palette claire ou sombre (`mode` : system, light, dark)."""
     _state["mode"] = mode
     if mode == "system":
-        dark = app.styleHints().colorScheme() == Qt.ColorScheme.Dark
-        if not _state["connected"]:
-            app.styleHints().colorSchemeChanged.connect(
-                lambda *_: _state["mode"] == "system" and apply(app, "system"))
-            _state["connected"] = True
+        dark = app.styleHints().colorScheme() == Qt.ColorScheme.Dark     # suivi : MainWindow
     else:
         dark = mode == "dark"
     c = DARK if dark else LIGHT

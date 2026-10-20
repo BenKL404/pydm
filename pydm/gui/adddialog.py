@@ -284,6 +284,8 @@ class AddDialog(QDialog):
         if data and pix.loadFromData(data):
             self.thumb.setPixmap(pix.scaled(128, 72, Qt.KeepAspectRatio, Qt.SmoothTransformation))
             self.has_thumb = True
+        elif self.has_thumb:
+            return                  # image illisible : on garde la bonne miniature déjà affichée
         else:
             self.thumb.setPixmap(theme.type_icon("video").pixmap(40, 40))
 
@@ -329,14 +331,14 @@ class AddDialog(QDialog):
         choice = None
         if r and r["kind"] == "video" and self.quality_box.currentIndex() >= 0:
             choice = r["choices"][self.quality_box.currentIndex()]
-        name = self.name_edit.text().strip() or (r and r.get("name")) or self.filename
+        name = (self.name_edit.text().strip() or (r and r.get("name")) or self.filename or "").replace("/", "_")
         audio_mp3 = bool(choice and choice["audio_only"] and choice["ext"] == "mp3")
         auto = self._category(r, choice) is None and not self.folder_edit.isModified()
         return [{"url": self.urls[0], "kind": kind, "folder": self.folder_edit.text().strip() or self.settings["folder"],
                  "auto_folder": auto,
                  "name": name, "fmt": choice["format"] if choice else None,
                  "quality": "Audio MP3" if audio_mp3 else ("Meilleure" if choice else self.settings["quality"]),
-                 "headers": self.headers, "filename": self.filename}]
+                 "headers": self.headers, "filename": self.filename, "ext": choice["ext"] if choice else None}]
 
     def _collect_batch(self):
         main = self.folder_edit.text().strip() or self.settings["folder"]
