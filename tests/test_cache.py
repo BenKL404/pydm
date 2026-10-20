@@ -119,11 +119,11 @@ class CacheTest(unittest.TestCase):
         gate = threading.Event()
         an = FakeAnalyzer(gate=gate)
         c = AnalysisCache(an, workers=2)
-        for i in range(5):
+        for i in range(4):          # sous la limite de la file (4 en attente) : aucune n'est abandonnée
             c.prefetch(f"https://vimeo.com/{i}")
         time.sleep(0.2)
         gate.set()
-        self.assertTrue(wait_for(lambda: len(an.calls) == 5))
+        self.assertTrue(wait_for(lambda: len(an.calls) == 4))
         self.assertEqual(an.max_active, 2)
 
 
