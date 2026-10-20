@@ -38,6 +38,9 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 - The Tkinter interface.
 
+- Videos are analysed as soon as their page opens (extension option, PyDM must be
+  running) and analyses are kept 10 minutes, so the add window opens with the
+  quality list ready; the tab title and the YouTube thumbnail show immediately.
 - Sidebar with live counts to filter the list by state and by file type
   (combined with search); right-click a type to open its folder; Ctrl+B to hide it.
 - Download queue: limit of simultaneous downloads, "Later" scheduled queue with a

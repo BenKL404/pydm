@@ -2,7 +2,7 @@
 // envoie tout à PyDM par la messagerie native (hôte « com.pydm.host »).
 const api = globalThis.browser ?? chrome;
 const HOST = "com.pydm.host";
-const DEFAULTS = { intercept: true, videoButton: true, minSizeKB: 100 };
+const DEFAULTS = { intercept: true, videoButton: true, minSizeKB: 100, prefetch: true };
 const VIDEO_HOSTS = /(^|\.)(youtube\.com|youtu\.be|vimeo\.com|dailymotion\.com|dai\.ly|twitch\.tv|tiktok\.com|instagram\.com|facebook\.com|fb\.watch|x\.com|twitter\.com|reddit\.com|soundcloud\.com|bilibili\.com|rumble\.com|odysee\.com|bandcamp\.com|arte\.tv|france\.tv|streamable\.com)$/i;
 const IGNORED_MEDIA_HOSTS = /(^|\.)(googlevideo\.com|fbcdn\.net|cdninstagram\.com)$/i;
 const passThrough = new Set();   // URLs relancées dans le navigateur (PyDM indisponible)
@@ -24,12 +24,17 @@ async function cookieHeader(url) {
   }
 }
 
-async function sendToPyDM({ url, referer, filename, kind = "auto" }) {
+async function headersFor(url, referer) {
   const headers = { "User-Agent": navigator.userAgent };
   if (referer && /^https?:/.test(referer)) headers.Referer = referer;
   const cookie = await cookieHeader(url);
   if (cookie) headers.Cookie = cookie;
-  const reply = await api.runtime.sendNativeMessage(HOST, { action: "add", url, headers, filename, kind });
+  return headers;
+}
+
+async function sendToPyDM({ url, referer, filename, kind = "auto", title }) {
+  const headers = await headersFor(url, referer);
+  const reply = await api.runtime.sendNativeMessage(HOST, { action: "add", url, headers, filename, kind, title });
   if (!reply?.ok) throw new Error(reply?.error || "PyDM n'a pas répondu");
   return reply;
 }
@@ -101,10 +106,35 @@ api.webRequest.onHeadersReceived.addListener(
   ["responseHeaders"]
 );
 
-api.tabs.onUpdated.addListener((tabId, info) => {
+api.tabs.onUpdated.addListener((tabId, info, tab) => {
   if (info.url) setMedia(tabId, []);
+  if (info.url || info.status === "complete") prefetch(tabId, info.url || tab?.url);
 });
-api.tabs.onRemoved.addListener((tabId) => api.storage.session.remove(`m_${tabId}`));
+api.tabs.onRemoved.addListener((tabId) => {
+  api.storage.session.remove(`m_${tabId}`);
+  prefetched.delete(tabId);
+});
+
+// --- 2 bis. Analyse anticipée : PyDM prépare la vidéo dès l'ouverture de la page ----
+const prefetched = new Map();   // onglet → dernière URL envoyée
+
+function isVideoPage(url) {
+  let u;
+  try { u = new URL(url); } catch { return false; }
+  const host = u.hostname;
+  if (/(^|\.)youtube\.com$/i.test(host)) return (u.pathname === "/watch" && u.searchParams.has("v")) || u.pathname.startsWith("/shorts/");
+  if (/(^|\.)youtu\.be$/i.test(host)) return u.pathname.length > 1;
+  return VIDEO_HOSTS.test(host) && u.pathname.length > 1;
+}
+
+async function prefetch(tabId, url) {
+  if (!url || !isVideoPage(url) || prefetched.get(tabId) === url) return;
+  if (!(await settings()).prefetch) return;
+  prefetched.set(tabId, url);
+  try {
+    await api.runtime.sendNativeMessage(HOST, { action: "prefetch", url, headers: await headersFor(url, url) });
+  } catch {}      // PyDM fermé ou absent : rien à faire
+}
 
 // Choisit quoi télécharger pour « la vidéo de cette page ».
 async function resolveVideo(tabId, pageUrl, src) {
@@ -131,7 +161,7 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
   else if (info.menuItemId === "pydm-media" && info.mediaType === "image") job = { url: info.srcUrl, referer: pageUrl, kind: "file" };
   else job = await resolveVideo(tab?.id ?? -1, pageUrl, info.srcUrl);
   try {
-    await sendToPyDM(job);
+    await sendToPyDM({ ...job, title: tab?.title });
     flashBadge("✓", "#188038");
   } catch (e) {
     console.warn(e);
@@ -145,7 +175,7 @@ api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     try {
       if (msg.type === "video") {
         const job = await resolveVideo(sender.tab?.id ?? -1, msg.pageUrl, msg.src);
-        await sendToPyDM(job);
+        await sendToPyDM({ ...job, title: sender.tab?.title });
         return { ok: true };
       }
       if (msg.type === "download") {
@@ -153,7 +183,7 @@ api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return { ok: true };
       }
       if (msg.type === "pageVideo") {
-        await sendToPyDM(await resolveVideo(msg.tabId, msg.pageUrl, null));
+        await sendToPyDM({ ...(await resolveVideo(msg.tabId, msg.pageUrl, null)), title: msg.title });
         return { ok: true };
       }
       if (msg.type === "media") return { ok: true, media: await getMedia(msg.tabId) };

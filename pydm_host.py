@@ -47,6 +47,8 @@ def forward(msg):
                 s.sendall((json.dumps(msg) + "\n").encode())
                 return json.loads(s.makefile().readline() or "{}")
         except (FileNotFoundError, ConnectionRefusedError):
+            if msg.get("action") == "prefetch":    # simple préparation : jamais de lancement
+                return {"ok": False, "error": "PyDM fermé"}
             if not launched:
                 if not os.path.exists(LAUNCHER):
                     return {"ok": False, "error": "PyDM n'est pas installé (lancez install.sh)"}

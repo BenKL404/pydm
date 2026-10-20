@@ -54,6 +54,7 @@ version `.deb` ou `.rpm` du navigateur. Firefox en Snap (Ubuntu) fonctionne.
 | Action | Résultat |
 |---|---|
 | Cliquer sur un lien de téléchargement | Le navigateur s'efface et PyDM télécharge avec 8 connexions |
+| Ouvrir une page vidéo (YouTube…) | PyDM prépare la vidéo en arrière-plan : au clic, la liste des qualités est déjà prête (désactivable dans le popup ; seulement si PyDM est ouvert) |
 | Survoler une vidéo | Un bouton **⬇ Télécharger cette vidéo** apparaît en haut à droite du lecteur |
 | Clic droit sur un lien / une vidéo / une page | **Télécharger avec PyDM** |
 | Icône PyDM de la barre d'outils | État de la connexion, médias détectés sur la page (le chiffre sur l'icône), réglages |

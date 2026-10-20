@@ -23,14 +23,14 @@ function feedback(btn, reply) {
   $("status").className = ping?.ok ? "ok" : "err";
   $("help").style.display = ping?.ok ? "none" : "block";
 
-  const s = await api.storage.local.get(["intercept", "videoButton"]);
-  for (const key of ["intercept", "videoButton"]) {
+  const s = await api.storage.local.get(["intercept", "videoButton", "prefetch"]);
+  for (const key of ["intercept", "videoButton", "prefetch"]) {
     $(key).checked = s[key] !== false;
     $(key).addEventListener("change", (e) => api.storage.local.set({ [key]: e.target.checked }));
   }
 
   $("page").addEventListener("click", async (e) => {
-    feedback(e.target, await api.runtime.sendMessage({ type: "pageVideo", tabId: tab.id, pageUrl: tab.url }));
+    feedback(e.target, await api.runtime.sendMessage({ type: "pageVideo", tabId: tab.id, pageUrl: tab.url, title: tab.title }));
   });
   $("open").addEventListener("click", () => api.runtime.sendMessage({ type: "show" }));
 

@@ -26,6 +26,9 @@ over a video, and PyDM takes over.
   and Opera: download interception, a "Download this video" button on players,
   a context menu entry, and cookies and referrer forwarding so downloads that
   require a login work.
+- **Instant quality list**: when a video page opens, the extension asks PyDM to
+  analyse it in the background (only if PyDM is running), so the add window
+  shows the qualities immediately; analyses are remembered for 10 minutes.
 - **See before you download**: every link opens a compact window showing the
   file or video (thumbnail, title, duration, size) with the real list of
   available video qualities and their sizes (1080p, 720p…, audio-only MP3),

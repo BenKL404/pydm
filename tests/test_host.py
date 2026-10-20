@@ -38,5 +38,23 @@ class HostTest(unittest.TestCase):
         self.assertIn("install.sh", reply["error"])
 
 
+    def test_prefetch_ne_lance_pas(self):
+        with tempfile.TemporaryDirectory() as home:
+            bindir = os.path.join(home, ".local", "bin")
+            os.makedirs(bindir)
+            marker = os.path.join(home, "lance")
+            launcher = os.path.join(bindir, "pydm")
+            with open(launcher, "w") as f:
+                f.write(f"#!/bin/sh\ntouch {marker}\n")
+            os.chmod(launcher, 0o755)
+            env = dict(os.environ, HOME=home, PYDM_CONFIG_DIR=os.path.join(home, "cfg"))
+            t = time.time()
+            reply = call_host({"action": "prefetch", "url": "https://www.youtube.com/watch?v=a"}, env)
+            self.assertLess(time.time() - t, 2)
+            time.sleep(0.3)
+            self.assertFalse(os.path.exists(marker))
+        self.assertFalse(reply["ok"])
+
+
 if __name__ == "__main__":
     unittest.main()
