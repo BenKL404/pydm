@@ -318,8 +318,10 @@ class VideoDownload(_Task):
     """Vidéo d'un site de streaming, téléchargée par yt-dlp (fragments en parallèle)."""
 
     def __init__(self, url, folder, parts=8, name=None, quality="Meilleure", browser="Aucun",
-                 headers=None):
+                 headers=None, fmt=None, stem=None):
         self.url = url
+        self.fmt = fmt          # sélecteur yt-dlp choisi dans la fenêtre d'ajout
+        self.stem = stem        # nom choisi, sans extension
         self.headers = dict(headers or {})
         self.folder = folder
         self.parts = max(1, int(parts))
@@ -373,12 +375,13 @@ class VideoDownload(_Task):
         self.status = "Analyse…"
         ffmpeg = shutil.which("ffmpeg")
         audio = self.quality == "Audio MP3"
-        fmt = QUALITIES.get(self.quality, QUALITIES["Meilleure"])
-        if not ffmpeg and not audio:
+        fmt = self.fmt or QUALITIES.get(self.quality, QUALITIES["Meilleure"])
+        if not ffmpeg and not audio and not self.fmt:
             h = re.search(r"height<=(\d+)", fmt)   # sans ffmpeg : flux déjà fusionné uniquement
             fmt = f"b[height<={h.group(1)}]/b" if h else "b"
+        stem = (self.stem or "").replace("/", "_").strip()
         opts = {
-            "outtmpl": os.path.join(self.folder, "%(title).150B [%(id)s].%(ext)s"),
+            "outtmpl": os.path.join(self.folder, (stem or "%(title).150B [%(id)s]") + ".%(ext)s"),
             "format": fmt,
             "progress_hooks": [self._hook],
             "concurrent_fragment_downloads": self.parts,
@@ -394,54 +397,63 @@ class VideoDownload(_Task):
             opts["postprocessors"] = [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3",
                                        "preferredquality": "0"}]
         opts["http_headers"] = {k: v for k, v in self.headers.items() if k != "Cookie"}
-        browser = self.browser if self.browser and self.browser != "Aucun" else None
-        with_cookies = bool(browser or self.headers.get("Cookie"))
         try:
             os.makedirs(self.folder, exist_ok=True)
         except OSError as e:
             self.error = str(e)
             self.status = f"Erreur : {e}"
             return
-        # Les cookies (navigateur choisi, sinon ceux de l'extension) ne servent qu'en second essai :
-        # avec une session YouTube connectée, yt-dlp échoue (« The page needs to be reloaded »)
-        # même sur des vidéos publiques.
         first_error = None
-        for use_cookies in ((False, True) if with_cookies else (False,)):
-            cookie_file = None
-            run_opts = dict(opts)
-            if use_cookies:
-                self.status = "Nouvel essai avec vos cookies…"
-                if browser:
-                    run_opts["cookiesfrombrowser"] = (browser,)
-                else:
-                    cookie_file = run_opts["cookiefile"] = _cookie_file(self.url, self.headers["Cookie"])
-            try:
-                with yt_dlp.YoutubeDL(run_opts) as ydl:
-                    info = ydl.extract_info(self.url, download=True)
-                files = [r["filepath"] for r in (info or {}).get("requested_downloads") or []
-                         if r.get("filepath")]
-                if files:
-                    self.name = os.path.basename(files[-1])
-                    self.size = self.done = os.path.getsize(files[-1])
-                self.status = "Terminé"
-                return
-            except Exception as e:  # noqa: BLE001
-                if self.stop_evt.is_set() and not self.error:
-                    self.status = "En pause"
+        attempts = ytdlp_attempts(self.url, self.headers, self.browser)
+        try:
+            for extra in attempts:
+                if extra:
+                    self.status = "Nouvel essai avec vos cookies…"
+                try:
+                    with yt_dlp.YoutubeDL({**opts, **extra}) as ydl:
+                        info = ydl.extract_info(self.url, download=True)
+                    files = [r["filepath"] for r in (info or {}).get("requested_downloads") or []
+                             if r.get("filepath")]
+                    if files:
+                        self.name = os.path.basename(files[-1])
+                        self.size = self.done = os.path.getsize(files[-1])
+                    self.status = "Terminé"
                     return
-                first_error = first_error or e
-            finally:
-                self.speed = 0.0
-                if cookie_file:
-                    try:
-                        os.remove(cookie_file)
-                    except OSError:
-                        pass
+                except Exception as e:  # noqa: BLE001
+                    if self.stop_evt.is_set() and not self.error:
+                        self.status = "En pause"
+                        return
+                    first_error = first_error or e
+                finally:
+                    self.speed = 0.0
+        finally:
+            attempts.close()        # supprime le fichier de cookies éventuel
         msg = re.sub(r"\x1b\[[0-9;]*m", "", str(first_error)).replace("ERROR: ", "").strip()
         if "DRM" in msg:
             msg = "contenu protégé par DRM, téléchargement impossible"
         self.error = msg
         self.status = f"Erreur : {msg[:150]}"
+
+
+def ytdlp_attempts(url, headers, browser):
+    """Options yt-dlp de chaque essai : d'abord sans cookies, puis avec s'il y en a.
+
+    Avec une session YouTube connectée, yt-dlp échoue (« The page needs to be reloaded ») même
+    sur des vidéos publiques : les cookies (navigateur choisi, sinon ceux de l'extension, passés
+    par un fichier) ne servent qu'en second essai. Le fichier est supprimé à la fermeture.
+    """
+    yield {}
+    if browser and browser != "Aucun":
+        yield {"cookiesfrombrowser": (browser,)}
+    elif (headers or {}).get("Cookie"):
+        path = _cookie_file(url, headers["Cookie"])
+        try:
+            yield {"cookiefile": path}
+        finally:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
 
 def _cookie_file(url, header):
@@ -488,10 +500,11 @@ def looks_like_video(url, headers=None):
 
 
 def make_download(url, folder, parts=8, quality="Meilleure", browser="Aucun",
-                  headers=None, filename=None, kind="auto"):
+                  headers=None, filename=None, kind="auto", fmt=None, stem=None):
     """kind : "auto" (détection), "video" (yt-dlp) ou "file" (fichier direct)."""
     if (kind == "video" and have_ytdlp()) or (kind == "auto" and looks_like_video(url, headers)):
-        return VideoDownload(url, folder, parts, quality=quality, browser=browser, headers=headers)
+        return VideoDownload(url, folder, parts, quality=quality, browser=browser, headers=headers,
+                             fmt=fmt, stem=stem)
     return Download(url, folder, parts, headers=headers, name_hint=filename)
 
 
@@ -500,7 +513,7 @@ def entry_from_task(t):
     e = {"url": t.url, "folder": t.folder, "parts": t.parts, "name": t.name, "headers": t.headers,
          "added": datetime.fromtimestamp(t.added).isoformat(timespec="seconds")}
     if isinstance(t, VideoDownload):
-        e.update(kind="video", quality=t.quality, browser=t.browser)
+        e.update(kind="video", quality=t.quality, browser=t.browser, fmt=t.fmt, stem=t.stem)
     return e
 
 
@@ -508,7 +521,8 @@ def task_from_entry(e):
     """Recrée la tâche d'une entrée de session (les anciennes entrées n'ont pas « added »)."""
     if e.get("kind") == "video":
         t = VideoDownload(e["url"], e["folder"], e.get("parts", 8), e.get("name"),
-                          e.get("quality", "Meilleure"), e.get("browser", "Aucun"), e.get("headers"))
+                          e.get("quality", "Meilleure"), e.get("browser", "Aucun"), e.get("headers"),
+                          e.get("fmt"), e.get("stem"))
     else:
         t = Download(e["url"], e["folder"], e.get("parts", 8), e.get("name"), e.get("headers"))
     try:

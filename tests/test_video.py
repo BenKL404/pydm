@@ -7,7 +7,7 @@ import types
 import unittest
 from unittest import mock
 
-from pydm.engine import VideoDownload
+from pydm.engine import VideoDownload, ytdlp_attempts
 
 
 class FakeYoutubeDL:
@@ -38,12 +38,12 @@ class FakeYoutubeDL:
 
 
 class VideoCookiesTest(unittest.TestCase):
-    def run_video(self, url, headers, browser="Aucun", refuse=None):
+    def run_video(self, url, headers, browser="Aucun", refuse=None, **kw):
         FakeYoutubeDL.calls = []
         FakeYoutubeDL.refuse = staticmethod(refuse or (lambda opts: None))
         fake = types.SimpleNamespace(YoutubeDL=FakeYoutubeDL)
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(sys.modules, {"yt_dlp": fake}):
-            d = VideoDownload(url, tmp, headers=headers, browser=browser)
+            d = VideoDownload(url, tmp, headers=headers, browser=browser, **kw)
             d.start()
             end = time.time() + 10
             while d.running and time.time() < end:
@@ -116,6 +116,36 @@ class VideoCookiesTest(unittest.TestCase):
             finally:
                 os.chmod(locked, 0o700)
         self.assertTrue(d.status.startswith("Erreur"), d.status)
+
+
+    def test_format_choisi(self):
+        _, calls = self.run_video("https://vimeo.com/1", {}, fmt="137+140")
+        self.assertEqual(calls[0]["opts"]["format"], "137+140")
+
+    def test_nom_choisi(self):
+        d, calls = self.run_video("https://vimeo.com/1", {}, stem="Ma vidéo/été")
+        self.assertEqual(calls[0]["opts"]["outtmpl"], os.path.join(d.folder, "Ma vidéo_été.%(ext)s"))
+
+    def test_nom_vide_garde_le_modele(self):
+        _, calls = self.run_video("https://vimeo.com/1", {}, stem="  ")
+        self.assertTrue(calls[0]["opts"]["outtmpl"].endswith("%(title).150B [%(id)s].%(ext)s"))
+
+
+class AttemptsTest(unittest.TestCase):
+    def test_ytdlp_attempts_sans_cookies(self):
+        self.assertEqual(list(ytdlp_attempts("https://a.fr/v", {"User-Agent": "x"}, "Aucun")), [{}])
+
+    def test_ytdlp_attempts_fichier_supprime(self):
+        g = ytdlp_attempts("https://a.fr/v", {"Cookie": "a=1"}, "Aucun")
+        self.assertEqual(next(g), {})
+        opts = next(g)
+        self.assertTrue(os.path.exists(opts["cookiefile"]))
+        g.close()
+        self.assertFalse(os.path.exists(opts["cookiefile"]))
+
+    def test_ytdlp_attempts_navigateur(self):
+        self.assertEqual(list(ytdlp_attempts("https://a.fr/v", {}, "firefox")),
+                         [{}, {"cookiesfrombrowser": ("firefox",)}])
 
 
 if __name__ == "__main__":

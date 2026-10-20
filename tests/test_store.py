@@ -66,5 +66,13 @@ class EntryTest(unittest.TestCase):
         self.assertEqual(int(t2.added), 1_790_000_000)
 
 
+    def test_entry_aller_retour_fmt_stem(self):
+        t = VideoDownload("https://v.fr/w", "/tmp", 4, fmt="22", stem="x")
+        t2 = task_from_entry(json.loads(json.dumps(entry_from_task(t))))
+        self.assertEqual((t2.fmt, t2.stem), ("22", "x"))
+        old = task_from_entry({"url": "https://v.fr/w", "folder": "/tmp", "kind": "video"})
+        self.assertEqual((old.fmt, old.stem), (None, None))
+
+
 if __name__ == "__main__":
     unittest.main()
