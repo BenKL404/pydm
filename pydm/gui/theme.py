@@ -110,6 +110,9 @@ QTableView {{ border: none; gridline-color: transparent; selection-background-co
 QHeaderView::section {{ background: {window}; color: {muted}; border: none;
     border-bottom: 1px solid {border}; padding: 5px 8px; }}
 QSplitter::handle {{ background: {border}; }}
+QTableView::indicator {{ width: 14px; height: 14px; border: 1px solid {muted};
+    border-radius: 3px; background: {base}; }}
+QTableView::indicator:checked {{ background: {accent}; border-color: {accent}; }}
 QStatusBar {{ color: {muted}; padding-left: 8px; }}
 QStatusBar::item {{ border: none; }}
 QToolTip {{ border: 1px solid {border}; border-radius: 4px; padding: 4px 6px; }}

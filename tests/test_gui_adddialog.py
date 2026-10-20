@@ -24,8 +24,7 @@ def result(**kw):
     return r
 
 
-@unittest.skipUnless(HAS_QT, "PySide6 absent")
-class AddDialogTest(unittest.TestCase):
+class DialogCase(unittest.TestCase):
     def setUp(self):
         app()
         tmp = tempfile.TemporaryDirectory()
@@ -57,6 +56,9 @@ class AddDialogTest(unittest.TestCase):
             time.sleep(0.01)
         self.fail("analyse non reçue")
 
+
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class AddDialogTest(DialogCase):
     def test_video_remplie(self):
         dlg = self.dialog(result())
         self.wait_filled(dlg)
@@ -154,6 +156,61 @@ class AddDialogTest(unittest.TestCase):
         dlg.download_btn.click()
         self.assertEqual(self.emitted[0][0][0]["kind"], "file")
         self.assertEqual(self.emitted[0][0][0]["name"], "blender.tar.xz")
+
+
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class BatchTest(DialogCase):
+    URLS = ["https://a.fr/v1", "https://a.fr/f.zip", "https://a.fr/v2"]
+
+    def batch(self, results=None):
+        results = results or {
+            self.URLS[0]: result(name="Vidéo 1.mp4"),
+            self.URLS[1]: result(kind="file", name="f.zip", size=2048, choices=[]),
+            self.URLS[2]: result(name="Vidéo 2.mp4")}
+        dlg = self.dialog(urls=self.URLS, analyzer=lambda url, *a, **k: results[url])
+        self.wait_filled(dlg)
+        return dlg
+
+    def uncheck(self, dlg, row):
+        from PySide6.QtCore import Qt
+        dlg.table.item(row, 0).setCheckState(Qt.Unchecked)
+
+    def test_lot_trois_liens(self):
+        dlg = self.batch()
+        self.assertEqual(dlg.table.rowCount(), 3)
+        self.assertEqual(dlg.download_btn.text(), "Télécharger 3")
+        self.assertEqual(dlg.windowTitle(), "Ajouter 3 téléchargements")
+        self.assertEqual(dlg.table.item(1, 1).text(), "f.zip")
+
+    def test_lot_decocher(self):
+        dlg = self.batch()
+        self.uncheck(dlg, 1)
+        self.assertEqual(dlg.download_btn.text(), "Télécharger 2")
+        dlg.download_btn.click()
+        tasks = self.emitted[0][0]
+        self.assertEqual([t["url"] for t in tasks], [self.URLS[0], self.URLS[2]])
+
+    def test_lot_qualite_commune(self):
+        dlg = self.batch()
+        dlg.videos_box.setCurrentText("720p")
+        dlg.download_btn.click()
+        videos = [t for t in self.emitted[0][0] if t["kind"] == "video"]
+        self.assertEqual([(t["quality"], t["fmt"]) for t in videos], [("720p", None), ("720p", None)])
+
+    def test_lot_erreur_decochee(self):
+        from PySide6.QtCore import Qt
+        dlg = self.batch({self.URLS[0]: result(), self.URLS[1]: result(kind="error", error="HTTP Error 404",
+                                                                         choices=[], name=None),
+                          self.URLS[2]: result()})
+        self.assertEqual(dlg.table.item(1, 0).checkState(), Qt.Unchecked)
+        self.assertIn("404", dlg.table.item(1, 1).toolTip())
+        self.assertEqual(dlg.download_btn.text(), "Télécharger 2")
+
+    def test_lot_tout_decoche(self):
+        dlg = self.batch()
+        for row in range(3):
+            self.uncheck(dlg, row)
+        self.assertFalse(dlg.download_btn.isEnabled())
 
 
 if __name__ == "__main__":

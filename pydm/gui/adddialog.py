@@ -7,12 +7,14 @@ import threading
 import time
 
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout, QHBoxLayout, QLabel,
-                               QLineEdit, QPushButton, QToolButton, QVBoxLayout, QWidget)
+from PySide6.QtGui import QColor, QPixmap
+from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout,
+                               QHBoxLayout, QHeaderView, QLabel, QLineEdit, QPushButton, QTableWidget,
+                               QTableWidgetItem, QToolButton, QVBoxLayout, QWidget)
 
 from .. import store
 from ..analyze import analyze
+from ..engine import QUALITIES
 from ..filetypes import category
 from ..util import human, human_time
 from . import theme
@@ -36,7 +38,11 @@ class AddDialog(QDialog):
         self.results_q = queue.Queue()      # (index, résultat) issus des threads d'analyse
         self.closed = False
         self.started_at = time.monotonic()
-        self._build_single()
+        self.batch = len(self.urls) > 1
+        if self.batch:
+            self._build_batch()
+        else:
+            self._build_single()
         for i, url in enumerate(self.urls):
             threading.Thread(target=self._analyze, args=(i, url), daemon=True).start()
         self.timer = QTimer(self)
@@ -112,6 +118,66 @@ class AddDialog(QDialog):
         lay.addWidget(self.ffmpeg_label)
         lay.addLayout(self._footer())
 
+    def _build_batch(self):
+        self.setWindowTitle(f"Ajouter {len(self.urls)} téléchargements")
+        self.resize(620, 420)
+        lay = QVBoxLayout(self)
+        t = QTableWidget(len(self.urls), 3)
+        t.setHorizontalHeaderLabels(["", "Fichier", "Taille"])
+        t.verticalHeader().hide()
+        t.setShowGrid(False)
+        t.setSelectionMode(QAbstractItemView.NoSelection)
+        t.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        t.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        t.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        t.setColumnWidth(0, 28)
+        t.setColumnWidth(2, 110)
+        for row, url in enumerate(self.urls):
+            check = QTableWidgetItem()
+            check.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+            check.setCheckState(Qt.Checked)
+            t.setItem(row, 0, check)
+            name = QTableWidgetItem(theme.type_icon("other"), url.rstrip("/").rsplit("/", 1)[-1] or url)
+            name.setToolTip(url)
+            t.setItem(row, 1, name)
+            size = QTableWidgetItem("Analyse…")
+            size.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            t.setItem(row, 2, size)
+        t.itemChanged.connect(lambda *_: self._update_count())
+        self.table = t
+        lay.addWidget(t, 1)
+        form = QFormLayout()
+        self.videos_box = QComboBox()
+        self.videos_box.addItems(list(QUALITIES))
+        self.videos_box.setCurrentText(self.settings["quality"])
+        form.addRow("Vidéos", self.videos_box)
+        form.addRow("Dossier", self._folder_row())
+        lay.addLayout(form)
+        lay.addLayout(self._footer())
+        self._update_count()
+
+    def _checked_rows(self):
+        return [row for row in range(self.table.rowCount())
+                if self.table.item(row, 0).checkState() == Qt.Checked]
+
+    def _update_count(self):
+        n = len(self._checked_rows())
+        self.download_btn.setText(f"Télécharger {n}")
+        self.download_btn.setEnabled(n > 0)
+        self.later_btn.setEnabled(n > 0)
+
+    def _show_row(self, row, r):
+        name, size = self.table.item(row, 1), self.table.item(row, 2)
+        if r["kind"] == "error":
+            self.table.item(row, 0).setCheckState(Qt.Unchecked)
+            name.setToolTip(f"{self.urls[row]}\n{r['error']}")
+            size.setText("Erreur")
+            size.setForeground(QColor(theme.STATE_COLORS["error"]))
+            return
+        name.setText(r["name"] or self.urls[row])
+        name.setIcon(theme.type_icon("video" if r["kind"] == "video" else category(r["name"])))
+        size.setText(human(r["size"]) if r.get("size") else ("" if r["kind"] == "video" else "?"))
+
     # --- analyse ----------------------------------------------------------------
     def _analyze(self, i, url):
         r = self.analyzer(url, self.headers, self.settings["browser"], self.kind, self.settings["quality"])
@@ -134,7 +200,10 @@ class AddDialog(QDialog):
 
     def _set_result(self, i, r):
         self.results[i] = r
-        self._show_single(r)
+        if self.batch:
+            self._show_row(i, r)
+        else:
+            self._show_single(r)
 
     def _show_single(self, r):
         muted = theme.colors()["muted"]
@@ -200,6 +269,8 @@ class AddDialog(QDialog):
     # --- résultat ----------------------------------------------------------------
     def collect(self):
         """Entrées à créer selon l'état de la fenêtre."""
+        if self.batch:
+            return self._collect_batch()
         r = self.results[0]
         kind = r["kind"] if r and r["kind"] in ("video", "file") else self.kind
         choice = None
@@ -211,6 +282,17 @@ class AddDialog(QDialog):
                  "name": name, "fmt": choice["format"] if choice else None,
                  "quality": "Audio MP3" if audio_mp3 else self.settings["quality"],
                  "headers": self.headers, "filename": self.filename}]
+
+    def _collect_batch(self):
+        folder = self.folder_edit.text().strip() or self.settings["folder"]
+        tasks = []
+        for row in self._checked_rows():
+            r = self.results[row]
+            kind = r["kind"] if r and r["kind"] in ("video", "file") else self.kind
+            tasks.append({"url": self.urls[row], "kind": kind, "folder": folder,
+                          "name": (r and r.get("name")) or None, "fmt": None,
+                          "quality": self.videos_box.currentText(), "headers": self.headers, "filename": None})
+        return tasks
 
     def _finish(self, start):
         tasks = self.collect()
