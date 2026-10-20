@@ -6,7 +6,7 @@ import shutil
 import urllib.parse
 import urllib.request
 
-from .engine import UA, have_ytdlp, looks_like_video, probe, ytdlp_attempts
+from .engine import UA, friendly_error, have_ytdlp, looks_like_video, probe, ytdlp_attempts
 from .util import human
 
 THUMB_MAX = 64 * 1024
@@ -203,5 +203,5 @@ def analyze(url, headers=None, browser="Aucun", kind="auto", default_quality="Me
         return _result(kind="file", name=name, size=size, resumable=ranges,
                        site=urllib.parse.urlparse(url).hostname)
     except Exception as e:  # noqa: BLE001
-        msg = _clean(e) or "analyse impossible"
+        msg = friendly_error(_clean(e) or "analyse impossible")
         return _result(kind="error", error=msg, drm="DRM" in msg)

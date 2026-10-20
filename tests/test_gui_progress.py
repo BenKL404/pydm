@@ -61,6 +61,10 @@ class ProgressDialogTest(unittest.TestCase):
         self.assertEqual(d.table.item(0, 3).text(), "terminée")
         self.assertEqual(d.table.item(1, 3).text(), "réception")
 
+    def test_reprise_masquee_en_erreur(self):
+        d = self.dialog(task(running=False, error="HTTP Error 403", status="Erreur : …", want="stop"))
+        self.assertEqual(d.values["Reprise"].text(), "—")
+
     def test_video_sans_segments(self):
         d = self.dialog(task(segments=None, done=300, status="Téléchargement (112/360 fragments)"))
         self.assertTrue(d.map.isHidden())

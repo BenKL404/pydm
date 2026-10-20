@@ -256,8 +256,8 @@ class Download(_Task):
             size, ranges, name = probe(self.url, self.headers)
             self._prepare(size, ranges, self.name_hint or name)
         except Exception as e:  # noqa: BLE001
-            self.error = str(e)
-            self.status = f"Erreur : {e}"
+            self.error = friendly_error(str(e))
+            self.status = f"Erreur : {self.error}"
             return
 
         self.status = "Téléchargement"
@@ -466,6 +466,7 @@ class VideoDownload(_Task):
         msg = re.sub(r"\x1b\[[0-9;]*m", "", str(first_error)).replace("ERROR: ", "").strip()
         if "DRM" in msg:
             msg = "contenu protégé par DRM, téléchargement impossible"
+        msg = friendly_error(msg)
         self.error = msg
         self.status = f"Erreur : {msg[:150]}"
 
@@ -489,6 +490,14 @@ def ytdlp_attempts(url, headers, browser):
                 os.remove(path)
             except OSError:
                 pass
+
+
+def friendly_error(msg):
+    """Message lisible pour les refus courants (le détail technique reste à la fin)."""
+    if "HTTP Error 403" in msg:
+        return ("Accès refusé par le serveur (403) : le lien est peut-être lié au navigateur ou à son "
+                "adresse IP (VPN ou proxy ?), ou a expiré. Rechargez la page puis renvoyez le lien. — " + msg)
+    return msg
 
 
 def clean_stale_cookie_files(max_age=3600, tmpdir=None):

@@ -150,7 +150,7 @@ class ProgressDialog(QDialog):
         self.values["Vitesse"].setText(f"{human(t.speed)}/s" if t.running else "")
         eta = (t.size - t.done) / t.speed if t.running and t.size and t.speed > 0 else None
         self.values["Temps restant"].setText(human_time(eta))
-        self.values["Reprise"].setText("possible" if t.resumable else "impossible")
+        self.values["Reprise"].setText("—" if t.error else ("possible" if t.resumable else "impossible"))
         self.bar.setValue(int(1000 * ratio) if ratio is not None else 0)
         segments = getattr(t, "segments", None)
         has_map = bool(segments) and t.size

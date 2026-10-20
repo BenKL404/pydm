@@ -206,6 +206,18 @@ class VideoCookiesTest(unittest.TestCase):
                              (False, True, True))
 
 
+    def test_message_403_explicite(self):
+        d, _ = self.run_video("https://exemple.fr/master.m3u8", {}, refuse=lambda o: (
+            "ERROR: [generic] master: Unable to download webpage: HTTP Error 403: Forbidden"))
+        self.assertIn("Accès refusé par le serveur", d.status)
+        self.assertIn("Rechargez la page", d.error)
+
+    def test_message_ordinaire_inchange(self):
+        from pydm.engine import friendly_error
+        self.assertEqual(friendly_error("HTTP Error 404: Not Found"), "HTTP Error 404: Not Found")
+        self.assertTrue(friendly_error("HTTP Error 403: Forbidden").startswith("Accès refusé par le serveur (403)"))
+
+
 class AttemptsTest(unittest.TestCase):
     def test_ytdlp_attempts_sans_cookies(self):
         self.assertEqual(list(ytdlp_attempts("https://a.fr/v", {"User-Agent": "x"}, "Aucun")), [{}])

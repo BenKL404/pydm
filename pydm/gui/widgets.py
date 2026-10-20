@@ -57,7 +57,7 @@ class DetailPanel(QWidget):
             ("Taille", human(task.size)),
             ("Reçu", human(task.done)),
             ("Connexions", f"{task.active_connections} actives / {task.parts} prévues"),
-            ("Reprise possible", "oui" if task.resumable else "non"),
+            ("Reprise possible", "—" if task.error else ("oui" if task.resumable else "non")),
         ]
         if task.error:
             rows.append(("Erreur", f"<span style='color:{theme.STATE_COLORS['error']}'>"

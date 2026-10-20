@@ -128,6 +128,10 @@ class AnalyzeTest(unittest.TestCase):
         r = self.video(refuse=lambda o: "This video is DRM protected")
         self.assertIs(r["drm"], True)
 
+    def test_analyze_403_explicite(self):
+        r = self.video(refuse=lambda o: "ERROR: HTTP Error 403: Forbidden")
+        self.assertIn("Accès refusé par le serveur", r["error"])
+
     def test_analyze_fichier(self):
         data = os.urandom(300_000)
         url, stop = serve(data, headers={"Content-Disposition": "attachment; filename=a.zip"})
