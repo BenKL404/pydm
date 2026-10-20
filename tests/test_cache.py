@@ -154,5 +154,20 @@ class SchedulingTest(unittest.TestCase):
         self.assertTrue(c.ready("https://vimeo.com/9"))  # les plus récentes d'abord
 
 
+class TwoClicksTest(unittest.TestCase):
+    def test_deux_clics_une_analyse(self):
+        an = SlowAnalyzer()
+        c = AnalysisCache(an)
+        url = "https://www.youtube.com/watch?v=z"
+        got = []
+        threads = [threading.Thread(target=lambda: got.append(c.get(url))) for _ in range(2)]
+        for t in threads:
+            t.start()
+            time.sleep(0.05)
+        for t in threads:
+            t.join(5)
+        self.assertEqual((len(an.calls), len(got)), (1, 2))
+
+
 if __name__ == "__main__":
     unittest.main()

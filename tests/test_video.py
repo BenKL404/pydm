@@ -120,7 +120,7 @@ class VideoCookiesTest(unittest.TestCase):
 
     def test_format_choisi(self):
         _, calls = self.run_video("https://vimeo.com/1", {}, fmt="137+140")
-        self.assertEqual(calls[0]["opts"]["format"], "137+140")
+        self.assertEqual(calls[0]["opts"]["format"], "137+140/bv*+ba/b")     # repli si le format a disparu
 
     def test_nom_choisi(self):
         d, calls = self.run_video("https://vimeo.com/1", {}, stem="Ma vidéo/été")
@@ -186,6 +186,22 @@ class VideoCookiesTest(unittest.TestCase):
             pending = VideoDownload("https://vimeo.com/1", tmp, stem="Clip")
             self.assertEqual(sorted(os.path.basename(f) for f in pending.files()),
                              ["Clip.f137.mp4.part", "Clip.f140.m4a", "Clip.mp4.ytdl"])
+
+
+    def test_vieux_fichiers_de_cookies_nettoyes(self):
+        import time as _time
+        from pydm.engine import clean_stale_cookie_files
+        with tempfile.TemporaryDirectory() as tmp:
+            old, recent, other = (os.path.join(tmp, n) for n in
+                                  ("pydm-cookies-a.txt", "pydm-cookies-b.txt", "autre.txt"))
+            for p in (old, recent, other):
+                open(p, "w").close()
+            past = _time.time() - 7200
+            os.utime(old, (past, past))
+            os.utime(other, (past, past))
+            clean_stale_cookie_files(tmpdir=tmp)
+            self.assertEqual((os.path.exists(old), os.path.exists(recent), os.path.exists(other)),
+                             (False, True, True))
 
 
 class AttemptsTest(unittest.TestCase):

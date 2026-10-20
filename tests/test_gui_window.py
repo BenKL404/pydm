@@ -549,6 +549,9 @@ class QueueCommandsTest(QueueTest):
         w = self.window()
         labels = [a.text() for a in w.btn_schedule.menu().actions() if not a.isSeparator()]
         self.assertEqual(labels, ["Démarrer la file", "Arrêter la file", "Planification…"])
+        later = FakeDownload("https://a.fr/plus-tard.bin", self.cfg)
+        later.want = "later"
+        w.model.add(later)
         w.btn_schedule.menu().actions()[0].trigger()
         self.assertIs(w.scheduler.queue_started, True)
         self.assertIn("file démarrée", (w.tick() or w.status_left.text()))

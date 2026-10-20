@@ -136,5 +136,12 @@ class SchedulerTest(unittest.TestCase):
         self.assertFalse(s.tick(tasks, NOW))
 
 
+    def test_file_demarree_sans_tache_plus_tard(self):
+        s = Scheduler(3)
+        s.start_queue()
+        s.tick([FakeTask("now")], NOW)
+        self.assertFalse(s.queue_started)
+
+
 if __name__ == "__main__":
     unittest.main()

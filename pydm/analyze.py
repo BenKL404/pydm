@@ -121,8 +121,11 @@ def build_choices(info, ffmpeg):
         ext = a.get("ext") or "m4a"
         choices.append(_choice(_label("Audio seul", ext, size, approx), a["format_id"], ext, size, approx,
                                audio_only=True))
+    best = _choice("Meilleure disponible", "bv*+ba/b" if ffmpeg else "b", info.get("ext") or "mp4")
     if not choices:
-        choices.append(_choice("Meilleure disponible", "bv*+ba/b" if ffmpeg else "b", info.get("ext") or "mp4"))
+        choices.append(best)
+    elif all(c["audio_only"] for c in choices) and any(f.get("vcodec") != "none" for f in formats):
+        choices.insert(0, best)     # vidéo sans hauteur connue : la proposer quand même
     top_complete = max((f["height"] for f in usable), default=0)
     missing = not ffmpeg and any(not _has_audio(f) and f["height"] > top_complete for f in videos)
     return choices, missing

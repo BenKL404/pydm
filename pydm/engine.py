@@ -407,10 +407,12 @@ class VideoDownload(_Task):
         self.status = "Analyse…"
         ffmpeg = shutil.which("ffmpeg")
         audio = self.quality == "Audio MP3"
-        fmt = self.fmt or QUALITIES.get(self.quality, QUALITIES["Meilleure"])
-        if not ffmpeg and not audio and not self.fmt:
+        fmt = QUALITIES.get(self.quality, QUALITIES["Meilleure"])
+        if not ffmpeg and not audio:
             h = re.search(r"height<=(\d+)", fmt)   # sans ffmpeg : flux déjà fusionné uniquement
             fmt = f"b[height<={h.group(1)}]/b" if h else "b"
+        if self.fmt and self.fmt != fmt:            # format choisi, repli si YouTube l'a retiré
+            fmt = f"{self.fmt}/{fmt}"
         stem = (self.stem or "").replace("/", "_").strip().encode()[:150].decode(errors="ignore").strip()
         opts = {
             "outtmpl": os.path.join(self.folder, (stem.replace("%", "%%") or "%(title).150B [%(id)s]")
@@ -487,6 +489,17 @@ def ytdlp_attempts(url, headers, browser):
                 os.remove(path)
             except OSError:
                 pass
+
+
+def clean_stale_cookie_files(max_age=3600, tmpdir=None):
+    """Supprime les fichiers de cookies temporaires oubliés (PyDM quitté pendant une analyse)."""
+    now = time.time()
+    for path in glob.glob(os.path.join(tmpdir or tempfile.gettempdir(), "pydm-cookies-*.txt")):
+        try:
+            if now - os.path.getmtime(path) > max_age:
+                os.remove(path)
+        except OSError:
+            pass
 
 
 def _cookie_file(url, header):

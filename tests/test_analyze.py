@@ -58,6 +58,12 @@ class ChoicesTest(unittest.TestCase):
         choices, _ = build_choices(info, ffmpeg=True)
         self.assertEqual([c["label"] for c in choices], ["720p · MP4", "Audio seul · MP3"])
 
+    def test_video_sans_hauteur_avec_audio(self):
+        info = {"formats": [fmt("hls-1", "mp4", "avc1", "none"), fmt("a", "m4a", "none", "mp4a", tbr=128)]}
+        choices, _ = build_choices(info, ffmpeg=True)
+        self.assertEqual([c["label"] for c in choices], ["Meilleure disponible", "Audio seul · MP3"])
+        self.assertEqual(choices[0]["format"], "bv*+ba/b")
+
     def test_preselection(self):
         choices, _ = build_choices(YT_INFO, ffmpeg=True)
         self.assertEqual(preselect(choices, "Meilleure"), 0)

@@ -86,6 +86,8 @@ class Scheduler:
                 t.status = "En file planifiée" + (f" (reprise à {resume:%H:%M})" if resume else "")
         pending = any(t.want in ("now", "later") and not t.finished and not t.error for t in tasks)
         forced = any(t.want == "force" and t.running for t in tasks)
+        if self.queue_started and not any(t.want == "later" and not t.finished and not t.error for t in tasks):
+            self.queue_started = False      # rien dans la file planifiée : rien à « démarrer »
         launched = [t for t in tasks if id(t) in self._launched]
         # une file arrêtée par l'utilisateur (tâches mises en pause) n'est pas « terminée »
         done = bool(launched) and all(t.finished or t.error for t in launched)

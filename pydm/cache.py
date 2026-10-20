@@ -110,9 +110,28 @@ class AnalysisCache:
             with self._lock:
                 result = self._fresh(key)
         if result is None:
-            result = self.analyzer(url, headers, browser, kind, default_quality)
-            with self._lock:
-                self._store(key, result)
+            with self._lock:                # un second clic attendra cette analyse
+                job = self._pending.get(key)
+                if job is None:
+                    job = self._pending[key] = {"key": key, "started": True, "done": threading.Event()}
+                    mine = True
+                else:
+                    mine = False
+            if not mine:
+                job["done"].wait(WAIT_MAX)
+                with self._lock:
+                    result = self._fresh(key)
+            if result is None:
+                try:
+                    result = self.analyzer(url, headers, browser, kind, default_quality)
+                finally:
+                    with self._lock:
+                        if mine and self._pending.get(key) is job:
+                            del self._pending[key]
+                    if mine:
+                        job["done"].set()
+                with self._lock:
+                    self._store(key, result)
         return self._adapt(result, default_quality)
 
     @staticmethod
