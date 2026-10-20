@@ -393,41 +393,55 @@ class VideoDownload(_Task):
         if audio and ffmpeg:
             opts["postprocessors"] = [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3",
                                        "preferredquality": "0"}]
-        cookie_file = None
-        if self.browser and self.browser != "Aucun":
-            opts["cookiesfrombrowser"] = (self.browser,)
-            opts["http_headers"] = {k: v for k, v in self.headers.items() if k != "Cookie"}
-        elif self.headers:
-            # yt-dlp refuse les cookies passés en en-tête (YouTube répond « The page needs to be
-            # reloaded ») : ceux transmis par l'extension passent par un fichier de cookies.
-            opts["http_headers"] = {k: v for k, v in self.headers.items() if k != "Cookie"}
-            if self.headers.get("Cookie"):
-                cookie_file = opts["cookiefile"] = _cookie_file(self.url, self.headers["Cookie"])
+        opts["http_headers"] = {k: v for k, v in self.headers.items() if k != "Cookie"}
+        browser = self.browser if self.browser and self.browser != "Aucun" else None
+        with_cookies = bool(browser or self.headers.get("Cookie"))
         try:
             os.makedirs(self.folder, exist_ok=True)
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(self.url, download=True)
-            files = [r["filepath"] for r in (info or {}).get("requested_downloads") or [] if r.get("filepath")]
-            if files:
-                self.name = os.path.basename(files[-1])
-                self.size = self.done = os.path.getsize(files[-1])
-            self.status = "Terminé"
-        except Exception as e:  # noqa: BLE001
-            if self.stop_evt.is_set() and not self.error:
-                self.status = "En pause"
+        except OSError as e:
+            self.error = str(e)
+            self.status = f"Erreur : {e}"
+            return
+        # Les cookies (navigateur choisi, sinon ceux de l'extension) ne servent qu'en second essai :
+        # avec une session YouTube connectée, yt-dlp échoue (« The page needs to be reloaded »)
+        # même sur des vidéos publiques.
+        first_error = None
+        for use_cookies in ((False, True) if with_cookies else (False,)):
+            cookie_file = None
+            run_opts = dict(opts)
+            if use_cookies:
+                self.status = "Nouvel essai avec vos cookies…"
+                if browser:
+                    run_opts["cookiesfrombrowser"] = (browser,)
+                else:
+                    cookie_file = run_opts["cookiefile"] = _cookie_file(self.url, self.headers["Cookie"])
+            try:
+                with yt_dlp.YoutubeDL(run_opts) as ydl:
+                    info = ydl.extract_info(self.url, download=True)
+                files = [r["filepath"] for r in (info or {}).get("requested_downloads") or []
+                         if r.get("filepath")]
+                if files:
+                    self.name = os.path.basename(files[-1])
+                    self.size = self.done = os.path.getsize(files[-1])
+                self.status = "Terminé"
                 return
-            msg = re.sub(r"\x1b\[[0-9;]*m", "", str(e)).replace("ERROR: ", "").strip()
-            if "DRM" in msg:
-                msg = "contenu protégé par DRM, téléchargement impossible"
-            self.error = msg
-            self.status = f"Erreur : {msg[:150]}"
-        finally:
-            self.speed = 0.0
-            if cookie_file:
-                try:
-                    os.remove(cookie_file)
-                except OSError:
-                    pass
+            except Exception as e:  # noqa: BLE001
+                if self.stop_evt.is_set() and not self.error:
+                    self.status = "En pause"
+                    return
+                first_error = first_error or e
+            finally:
+                self.speed = 0.0
+                if cookie_file:
+                    try:
+                        os.remove(cookie_file)
+                    except OSError:
+                        pass
+        msg = re.sub(r"\x1b\[[0-9;]*m", "", str(first_error)).replace("ERROR: ", "").strip()
+        if "DRM" in msg:
+            msg = "contenu protégé par DRM, téléchargement impossible"
+        self.error = msg
+        self.status = f"Erreur : {msg[:150]}"
 
 
 def _cookie_file(url, header):

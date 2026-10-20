@@ -11,8 +11,9 @@ from pydm.engine import VideoDownload
 
 
 class FakeYoutubeDL:
-    """Imite yt_dlp.YoutubeDL : enregistre les options et l'état du fichier de cookies pendant l'appel."""
-    seen = {}
+    """Imite yt_dlp.YoutubeDL : enregistre chaque essai ; `refuse` simule les échecs."""
+    calls = []
+    refuse = staticmethod(lambda opts: None)     # renvoie un message d'erreur pour faire échouer l'essai
 
     def __init__(self, opts):
         self.opts = opts
@@ -24,17 +25,22 @@ class FakeYoutubeDL:
         return False
 
     def extract_info(self, url, download=True):
-        path = self.opts.get("cookiefile")
-        FakeYoutubeDL.seen = {"opts": dict(self.opts), "cookiefile": path}
-        if path:
-            FakeYoutubeDL.seen["mode"] = stat.S_IMODE(os.stat(path).st_mode)
-            with open(path) as f:
-                FakeYoutubeDL.seen["content"] = f.read()
+        call = {"opts": dict(self.opts), "cookiefile": self.opts.get("cookiefile")}
+        if call["cookiefile"]:
+            call["mode"] = stat.S_IMODE(os.stat(call["cookiefile"]).st_mode)
+            with open(call["cookiefile"]) as f:
+                call["content"] = f.read()
+        FakeYoutubeDL.calls.append(call)
+        error = FakeYoutubeDL.refuse(self.opts)
+        if error:
+            raise Exception(error)
         return {}
 
 
 class VideoCookiesTest(unittest.TestCase):
-    def run_video(self, url, headers, browser="Aucun"):
+    def run_video(self, url, headers, browser="Aucun", refuse=None):
+        FakeYoutubeDL.calls = []
+        FakeYoutubeDL.refuse = staticmethod(refuse or (lambda opts: None))
         fake = types.SimpleNamespace(YoutubeDL=FakeYoutubeDL)
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(sys.modules, {"yt_dlp": fake}):
             d = VideoDownload(url, tmp, headers=headers, browser=browser)
@@ -42,30 +48,74 @@ class VideoCookiesTest(unittest.TestCase):
             end = time.time() + 10
             while d.running and time.time() < end:
                 time.sleep(0.02)
-        return d, FakeYoutubeDL.seen
+        return d, FakeYoutubeDL.calls
 
-    def test_cookies_en_fichier_et_non_en_entete(self):
-        d, seen = self.run_video("https://www.youtube.com/watch?v=abc",
-                                 {"User-Agent": "Firefox", "Cookie": "SID=1; PREF=f6=8"})
+    def test_essai_sans_cookies_d_abord(self):
+        d, calls = self.run_video("https://www.youtube.com/watch?v=abc",
+                                  {"User-Agent": "Firefox", "Cookie": "SID=1"})
         self.assertEqual(d.status, "Terminé", d.status)
-        self.assertNotIn("Cookie", seen["opts"].get("http_headers", {}))
-        self.assertEqual(seen["opts"]["http_headers"]["User-Agent"], "Firefox")
-        self.assertEqual(seen["mode"], 0o600)
-        lines = [l.split("\t") for l in seen["content"].splitlines() if l and not l.startswith("#")]
+        self.assertEqual(len(calls), 1)
+        self.assertIsNone(calls[0]["cookiefile"])
+        self.assertEqual(calls[0]["opts"]["http_headers"], {"User-Agent": "Firefox"})
+
+    def test_reessai_avec_cookies_en_fichier(self):
+        d, calls = self.run_video("https://www.youtube.com/watch?v=abc",
+                                  {"User-Agent": "Firefox", "Cookie": "SID=1; PREF=f6=8"},
+                                  refuse=lambda o: None if o.get("cookiefile") else "Sign in to confirm your age")
+        self.assertEqual(d.status, "Terminé", d.status)
+        self.assertEqual([c["cookiefile"] is not None for c in calls], [False, True])
+        second = calls[1]
+        self.assertNotIn("Cookie", second["opts"]["http_headers"])
+        self.assertEqual(second["mode"], 0o600)
+        lines = [l.split("\t") for l in second["content"].splitlines() if l and not l.startswith("#")]
         self.assertEqual([(l[0], l[5], l[6]) for l in lines],
                          [(".youtube.com", "SID", "1"), (".youtube.com", "PREF", "f6=8")])
-        self.assertFalse(os.path.exists(seen["cookiefile"]))      # supprimé après usage
+        self.assertFalse(os.path.exists(second["cookiefile"]))      # supprimé après usage
 
-    def test_sans_cookie_pas_de_fichier(self):
-        _, seen = self.run_video("https://vimeo.com/1", {"User-Agent": "Firefox"})
-        self.assertIsNone(seen["cookiefile"])
+    def test_deux_echecs_garde_le_premier_message(self):
+        d, calls = self.run_video("https://www.youtube.com/watch?v=abc", {"Cookie": "SID=1"},
+                                  refuse=lambda o: "page reload" if o.get("cookiefile") else "Sign in to confirm")
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(d.status, "Erreur : Sign in to confirm")
+        self.assertFalse(os.path.exists(calls[1]["cookiefile"]))
 
-    def test_cookies_du_navigateur_prioritaires(self):
-        _, seen = self.run_video("https://www.youtube.com/watch?v=abc",
-                                 {"User-Agent": "Firefox", "Cookie": "SID=1"}, browser="firefox")
-        self.assertIsNone(seen["cookiefile"])
-        self.assertEqual(seen["opts"]["cookiesfrombrowser"], ("firefox",))
-        self.assertNotIn("Cookie", seen["opts"]["http_headers"])
+    def test_sans_cookie_un_seul_essai(self):
+        d, calls = self.run_video("https://vimeo.com/1", {"User-Agent": "Firefox"}, refuse=lambda o: "boom")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(d.status, "Erreur : boom")
+
+    def test_navigateur_choisi_en_second_essai(self):
+        d, calls = self.run_video("https://www.youtube.com/watch?v=abc",
+                                  {"User-Agent": "Firefox", "Cookie": "SID=1"}, browser="firefox")
+        self.assertEqual(d.status, "Terminé", d.status)
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn("cookiesfrombrowser", calls[0]["opts"])
+
+    def test_navigateur_choisi_si_le_premier_echoue(self):
+        _, calls = self.run_video("https://www.youtube.com/watch?v=abc",
+                                  {"User-Agent": "Firefox", "Cookie": "SID=1"}, browser="firefox",
+                                  refuse=lambda o: "boom")
+        self.assertEqual(len(calls), 2)
+        self.assertNotIn("cookiesfrombrowser", calls[0]["opts"])
+        self.assertEqual(calls[1]["opts"]["cookiesfrombrowser"], ("firefox",))
+        self.assertIsNone(calls[1]["cookiefile"])         # le navigateur choisi remplace ceux de l'extension
+        self.assertNotIn("Cookie", calls[1]["opts"]["http_headers"])
+
+    @unittest.skipIf(os.geteuid() == 0, "root peut écrire partout")
+    def test_dossier_impossible_a_creer(self):
+        FakeYoutubeDL.calls = []
+        FakeYoutubeDL.refuse = staticmethod(lambda opts: None)
+        fake = types.SimpleNamespace(YoutubeDL=FakeYoutubeDL)
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(sys.modules, {"yt_dlp": fake}):
+            locked = os.path.join(tmp, "verrou")
+            os.mkdir(locked, 0o500)
+            try:
+                d = VideoDownload("https://vimeo.com/1", os.path.join(locked, "sous-dossier"))
+                d.start()
+                d.wait(5)
+            finally:
+                os.chmod(locked, 0o700)
+        self.assertTrue(d.status.startswith("Erreur"), d.status)
 
 
 if __name__ == "__main__":
