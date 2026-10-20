@@ -16,6 +16,7 @@ class FakeDownload(FakeTask):
         self.kw = kw
         self.started = self.paused = False
         self.active_connections, self.resumable = 0, True
+        self.want = "now"
 
     def start(self):
         self.started, self.running = True, True
@@ -208,12 +209,16 @@ class ComfortTest(WindowCase):
         from PySide6.QtCore import Qt
         from PySide6.QtTest import QTest
         w = self.window()
-        t = self.add_fake(w, FakeDownload("https://a.fr/p.bin", self.cfg))
+        t = FakeDownload("https://a.fr/p.bin", self.cfg)
+        t.want = "stop"             # tâche en pause
+        self.add_fake(w, t)
         self.select_row(w, 0)
         QTest.keyClick(w.table, Qt.Key_Space)
+        w.tick()                    # c'est la file qui démarre la tâche
         self.assertTrue(t.started)
         QTest.keyClick(w.table, Qt.Key_Space)
         self.assertTrue(t.paused)
+        self.assertEqual(t.want, "stop")
 
     def test_detail(self):
         w = self.window()
@@ -317,13 +322,14 @@ class AddFlowTest(WindowCase):
         self.assertTrue(w.model.task(0).started)
         self.assertEqual(self.factory.calls[0]["fmt"], "137+140")
 
-    def test_plus_tard_en_pause(self):
+    def test_plus_tard_en_file_planifiee(self):
         w = self.window()
         w.add_urls(["https://a.fr/x.iso"])
         self.accept(w, [entry(folder=self.cfg)], start=False)
+        w.tick()
         t = w.model.task(0)
         self.assertFalse(t.started)
-        self.assertEqual(t.status, "En pause")
+        self.assertEqual((t.want, t.status), ("later", "En file planifiée"))
 
     def test_deux_messages_deux_dialogues(self):
         w = self.window()
@@ -402,6 +408,61 @@ class SortWindowTest(AddFlowTest):
         w.add_urls(["https://a.fr/x"])
         self.accept(w, [entry(folder=self.cfg)])
         self.assertIsNone(self.factory.calls[0]["route"])
+
+
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class QueueTest(WindowCase):
+    def four(self, w):
+        w.add_urls([f"https://a.fr/{i}.bin" for i in range(4)])
+        self.assertTrue(self.tick_until(w, lambda: w.model.rowCount() == 4 and
+                                        all(isinstance(t, FakeDownload) for t in w.model.tasks())))
+        w.tick()
+        return w.model.tasks()
+
+    def test_quatre_liens_trois_simultanes(self):
+        tasks = self.four(self.window())
+        self.assertEqual(sum(bool(t.started) for t in tasks), 3)
+        self.assertEqual(tasks[3].status, "En file")
+
+    def test_pause_d_une_tache_en_file(self):
+        w = self.window()
+        tasks = self.four(w)
+        w.table.selectRow(3)
+        w.pause_selected()
+        tasks[0].running, tasks[0].status = False, "Terminé"
+        w.tick()
+        self.assertFalse(tasks[3].started)
+        self.assertEqual(tasks[3].status, "En pause")
+
+    def test_retirer_libere_une_place(self):
+        w = self.window()
+        tasks = self.four(w)
+        w.table.selectRow(0)
+        w.remove_selected()
+        w.tick()
+        self.assertTrue(tasks[3].started)
+
+    def test_redemarrage_dix_entrees(self):
+        entries = [{"url": f"http://127.0.0.1:9/{i}.bin", "folder": self.cfg, "parts": 1, "name": None,
+                    "headers": {}, "want": "now"} for i in range(10)]
+        with open(os.path.join(self.cfg, "session.json"), "w") as f:
+            json.dump(entries, f)
+        w = self.window()
+        w.tick()
+        tasks = w.model.tasks()
+        try:
+            self.assertEqual(sum(t._thread is not None for t in tasks), 3)     # démarrées par la file
+            self.assertEqual([t.status for t in tasks[3:]], ["En file"] * 7)
+        finally:
+            for t in tasks:
+                t.pause()
+
+    def test_reglages_appliques(self):
+        from pydm.scheduler import LIMITER
+        self.addCleanup(setattr, LIMITER, "rate", 0)
+        self.settings.update(max_active=1, speed_on=True, speed_kbps=100)
+        w = self.window()
+        self.assertEqual((w.scheduler.max_active, LIMITER.rate), (1, 102400))
 
 
 if __name__ == "__main__":

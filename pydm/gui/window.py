@@ -5,6 +5,7 @@ import os
 import queue
 import threading
 import time
+from datetime import datetime
 
 from PySide6.QtCore import QByteArray, QEvent, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QKeySequence, QShortcut
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFrame, QHBoxLayout
 
 from .. import __version__, ipc, store
 from ..analyze import analyze
+from ..scheduler import LIMITER, Scheduler, parse_hhmm
 from ..util import human, unique_path
 from ..engine import BROWSERS, QUALITIES, Download, entry_from_task, make_download, task_from_entry
 from . import theme
@@ -32,6 +34,8 @@ class MainWindow(QMainWindow):
         self.settings = settings
         self.analyzer = analyzer
         self.dialogs = []               # fenêtres d'ajout ouvertes
+        self.scheduler = Scheduler()
+        self.apply_queue_settings()
         self.overrides = dict(overrides or {})     # options -o / -n : pour cette session seulement
         self.factory = factory
         self.inbox = queue.Queue()      # messages de l'extension (thread IPC)
@@ -301,10 +305,22 @@ class MainWindow(QMainWindow):
         settings = {**opts, "folder": base or opts["folder"]}
         return lambda cat: store.folder_for(cat, settings)
 
+    def apply_queue_settings(self):
+        """Simultanés, plage horaire et limite de vitesse d'après les réglages."""
+        s = self.settings
+        self.scheduler.max_active = s["max_active"]
+        self.scheduler.window = ((parse_hhmm(s["schedule_start"]), parse_hhmm(s["schedule_end"]))
+                                 if s["schedule_on"] else None)
+        LIMITER.rate = s["speed_kbps"] * 1024 if s["speed_on"] else 0
+
+    def queue_finished(self):
+        """La file planifiée est terminée (action finale : voir la fenêtre Planification)."""
+
     def _enqueue(self, url, folder, parts, quality, browser, headers, filename, kind,
-                 fmt=None, stem=None, start=True, route=None):
+                 fmt=None, stem=None, want="now", route=None):
         placeholder = Download(url, folder, parts)
         placeholder.status = "Analyse…"
+        placeholder.want = "stop"       # la file ne démarre pas la ligne provisoire
         self.model.add(placeholder)
 
         def detect():   # réseau : hors du thread de l'interface
@@ -315,7 +331,7 @@ class MainWindow(QMainWindow):
                 placeholder.error = str(e)
                 placeholder.status = f"Erreur : {e}"
                 return
-            self.detected.put((placeholder, task, start))
+            self.detected.put((placeholder, task, want))
         threading.Thread(target=detect, daemon=True).start()
         self._update_actions()
 
@@ -357,7 +373,8 @@ class MainWindow(QMainWindow):
                 filename = e["name"]
             route = self._route(opts, folder) if e.get("auto_folder") else None    # type encore inconnu
             self._enqueue(e["url"], folder, opts["parts"], e["quality"], opts["browser"], e.get("headers"),
-                          filename, e["kind"], fmt=e.get("fmt"), stem=stem, start=start, route=route)
+                          filename, e["kind"], fmt=e.get("fmt"), stem=stem,
+                          want="now" if start else "later", route=route)
 
     def handle_message(self, msg):
         """Appelé par le thread IPC : on se contente de transmettre au thread de l'interface."""
@@ -381,14 +398,13 @@ class MainWindow(QMainWindow):
                     continue        # la fenêtre d'ajout passe devant ; la principale reste où elle est
             self.show_window()
         while not self.detected.empty():
-            placeholder, task, start = self.detected.get()
+            placeholder, task, want = self.detected.get()
             if placeholder in self.model.tasks():
                 self.model.replace(placeholder, task)
-                if start:
-                    task.start()
-                elif not task.finished:
-                    task.status = "En pause"
+                task.want = want        # la file la démarre (ou l'attend)
                 self.dirty = True
+        if self.scheduler.tick(self.model.tasks(), datetime.now()):
+            self.queue_finished()
         self.model.refresh()
         self._notify_transitions()
         if self.dirty:
@@ -482,10 +498,11 @@ class MainWindow(QMainWindow):
 
     def toggle_selected(self):
         for t in self.selected_tasks():
-            if t.running:
-                t.pause()
+            if t.running or t.want in ("now", "later", "force"):
+                self._stop(t)
             elif not t.finished:
-                t.start()
+                t.want = "now"
+        self.dirty = True
 
     def copy_links(self):
         QGuiApplication.clipboard().setText("\n".join(t.url for t in self.selected_tasks()))
@@ -525,12 +542,14 @@ class MainWindow(QMainWindow):
 
     def pause_all(self):
         for t in self.model.tasks():
-            t.pause()
+            self._stop(t)
+        self.dirty = True
 
     def resume_all(self):
         for t in self.model.tasks():
-            if not t.running and not t.finished:
-                t.start()
+            if not t.finished:
+                t.want = "now"
+        self.dirty = True
 
     def open_preferences(self):
         from .prefs import PreferencesDialog, set_autostart
@@ -563,11 +582,21 @@ class MainWindow(QMainWindow):
 
     def resume_selected(self):
         for t in self.selected_tasks():
-            t.start()
+            if not t.finished:
+                t.want = "now"
+        self.dirty = True
+
+    @staticmethod
+    def _stop(t):
+        t.want = "stop"
+        t.pause()
+        if not t.running and not t.finished and not t.error:
+            t.status = "En pause"
 
     def pause_selected(self):
         for t in self.selected_tasks():
-            t.pause()
+            self._stop(t)
+        self.dirty = True
 
     def remove_selected(self):
         tasks = self.selected_tasks()
