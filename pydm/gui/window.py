@@ -38,6 +38,7 @@ from .adddialog import AddDialog
 from .delegates import ProgressDelegate
 from .links import extract_urls
 from .model import DownloadFilter, DownloadModel, counts
+from .progress import ProgressDialog
 from .schedule import EndActionDialog, ScheduleDialog, run_end_action
 from .sidebar import Sidebar
 from .widgets import DetailPanel, SpeedSparkline
@@ -53,6 +54,8 @@ class MainWindow(QMainWindow):
         self.cache = AnalysisCache(analyzer=analyzer)      # analyses anticipées et récentes
         self.dialogs = []               # fenêtres d'ajout ouvertes
         self._placeholders = set()      # lignes « Analyse… » en attente de la tâche réelle
+        self.progress_windows = {}      # id(tâche) → fenêtre de progression
+        self._auto_progress = set()     # ajoutées pendant la session : fenêtre au démarrage
         self.scheduler = Scheduler()
         self.clock = datetime.now       # remplaçable dans les tests
         self.end_delay = 60             # secondes avant l'action finale
@@ -186,6 +189,7 @@ class MainWindow(QMainWindow):
         self.btn_menu = self._tool("menu", "Menu", lambda: None)
         self.menu = QMenu(self)
         self.menu.addAction("Préférences…\tCtrl+,", self.open_preferences)
+        self.menu.addAction("Panneau de détail", self.toggle_detail)
         self.sidebar_action = self.menu.addAction("Barre latérale\tCtrl+B", self.toggle_sidebar)
         self.sidebar_action.setCheckable(True)
         self.sidebar_action.setChecked(self.settings["sidebar"])
@@ -542,6 +546,8 @@ class MainWindow(QMainWindow):
                 self.model.replace(placeholder, task)
                 # la file la démarre (ou l'attend) ; une pause demandée pendant l'analyse est gardée
                 task.want = "stop" if getattr(placeholder, "user_stop", False) else want
+                if self.settings["show_progress"]:
+                    self._auto_progress.add(task)
                 self.dirty = True
         while not self._end_errors.empty():
             error = self._end_errors.get()
@@ -549,6 +555,14 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "PyDM", error)
         if self.scheduler.tick(self.model.tasks(), self.clock()):
             self.queue_finished()
+        tasks = self.model.tasks()
+        for t in list(self._auto_progress):
+            if t.running:
+                self.open_progress(t)
+            if t.running or t.finished or t.error or t not in tasks:
+                self._auto_progress.discard(t)
+        for dlg in list(self.progress_windows.values()):
+            dlg.refresh()
         self.model.refresh()
         self._notify_transitions()
         if self.dirty:
@@ -646,6 +660,8 @@ class MainWindow(QMainWindow):
         menu.addAction("Descendre\tCtrl+↓", lambda: self.move_selected(1))
         menu.addAction("En tête de file\tCtrl+Origine", self.move_selected_top)
         menu.addSeparator()
+        menu.addAction("Progression…", lambda: self.open_progress(sel[0])).setEnabled(
+            not sel[0].finished and sel[0] not in self._placeholders)
         menu.addAction("Ouvrir le fichier", lambda: self.open_file(sel[0])).setEnabled(sel[0].finished)
         menu.addAction(theme.icon("folder"), "Ouvrir le dossier", self.open_folder)
         menu.addAction("Copier le lien", self.copy_links)
@@ -658,8 +674,31 @@ class MainWindow(QMainWindow):
         t = self.model.task(self.proxy.mapToSource(index).row())
         if t.finished:
             self.open_file(t)
-        else:
-            self.detail.setVisible(not self.detail.isVisible())
+        elif t not in self._placeholders:
+            self.open_progress(t)
+
+    def open_progress(self, t):
+        """Fenêtre de progression de la tâche (une seule par tâche)."""
+        dlg = self.progress_windows.get(id(t))
+        if dlg is None:
+            dlg = ProgressDialog(t, self, self)
+            dlg.finished.connect(lambda *_: self.progress_windows.pop(id(t), None))
+            self.progress_windows[id(t)] = dlg
+            dlg.refresh()
+        dlg.show()
+        dlg.raise_()
+
+    def pause_task(self, t):
+        self._stop(t)
+        self.dirty = True
+
+    def resume_task(self, t):
+        self._set_want(t, "now")
+        self.dirty = True
+        self.tick()
+
+    def toggle_detail(self):
+        self.detail.setVisible(self.detail.isHidden())
 
     def _set_want(self, t, want):
         """Change l'état voulu à la demande de l'utilisateur (relance une tâche en erreur)."""

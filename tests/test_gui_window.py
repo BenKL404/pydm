@@ -57,7 +57,7 @@ class WindowCase(unittest.TestCase):
         p = mock.patch("pydm.gui.adddialog.fetch_youtube_thumbnail", return_value=None)   # pas de réseau
         p.start()
         self.addCleanup(p.stop)
-        self.settings = dict(store.DEFAULTS, folder=self.cfg, confirm_add=False)
+        self.settings = dict(store.DEFAULTS, folder=self.cfg, confirm_add=False, show_progress=False)
         self.factory = Factory()
         self.MainWindow = MainWindow
 

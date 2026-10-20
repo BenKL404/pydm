@@ -75,6 +75,11 @@ version `.deb` ou `.rpm` du navigateur. Firefox en Snap (Ubuntu) fonctionne.
   **Annuler**. Plusieurs liens d'un coup ouvrent une seule fenêtre, avec une case par
   lien. « Ne plus demander » revient au téléchargement direct (à réactiver dans les
   préférences).
+- **Fenêtre de progression, comme IDM** : elle s'ouvre au démarrage de chaque
+  téléchargement ajouté (désactivable dans les préférences) ou par double-clic /
+  clic droit → Progression… Elle montre la vitesse, le temps restant, la **carte des
+  connexions** (chaque segment du fichier à sa place, coloré au fur et à mesure) et le
+  détail de chaque connexion ; Pause / Reprendre, Annuler, « Fermer à la fin ».
 - **Rangement par type, comme IDM** : chaque fichier va dans un sous-dossier de
   `~/Téléchargements` selon son type — `Vidéos`, `Musique` (dont l'audio MP3 extrait
   d'une vidéo), `Documents`, `Images`, `Archives`, `Programmes` ; le reste reste à la

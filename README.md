@@ -42,6 +42,9 @@ over a video, and PyDM takes over.
   on demand, "Force" to jump the queue, reordering, a global speed limit
   toggled from the status bar, and an action when the queue is done (quit,
   suspend, power off, with 60 s to cancel).
+- **Progress window, like IDM**: opens when a download starts (or on double-click),
+  with speed, time left, a map of the connections (each segment of the file at its
+  place) and a per-connection table; pause/resume, cancel, close when done.
 - **Sidebar filters** by state (active, queued, paused, finished, failed) and by
   type (videos, music, documents, images…), combined with search, with live counts.
 - **A modern, dense interface** (Qt 6): real progress bars, light and dark

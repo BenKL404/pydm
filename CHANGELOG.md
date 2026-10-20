@@ -38,6 +38,9 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 - The Tkinter interface.
 
+- Progress window for each download (opens when it starts, can be turned off):
+  speed, time left, map of the connections at their real position in the file,
+  per-connection table, pause/resume, cancel, "close when done".
 - Videos are analysed as soon as their page opens (extension option, PyDM must be
   running) and analyses are kept 10 minutes, so the add window opens with the
   quality list ready; the tab title and the YouTube thumbnail show immediately.
