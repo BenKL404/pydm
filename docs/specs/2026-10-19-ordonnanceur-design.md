@@ -1,203 +1,154 @@
 # Ordonnanceur PyDM : file d'attente, limite de vitesse, plage horaire
 
-Date : 2026-10-19 · Devient l'étape 2 de la modernisation décrite dans
-[2026-10-19-interface-qt-design.md](2026-10-19-interface-qt-design.md).
-
-> **Révision prévue avant l'étape 2.** Le moteur (§ 1 à 3, 5, 7, 8) reste valable et ira dans
-> `pydm/scheduler.py`. Les réglages (§ 4) s'ajoutent à `pydm/store.py` créé à l'étape 1.
-> L'interface (§ 6) et les tests (§ 9) seront réécrits pour Qt ; les catégories
-> automatiques sont à l'étape 3, la barre système et les notifications à l'étape 1.
+Date : 2026-10-19, révisée le 2026-10-20 pour l'interface Qt
+([2026-10-19-interface-qt-design.md](2026-10-19-interface-qt-design.md)) et la fenêtre d'ajout
+([2026-10-20-dialogue-ajout-design.md](2026-10-20-dialogue-ajout-design.md)).
 
 ## Objectif
 
-Aujourd'hui, tout téléchargement démarre dès qu'il est ajouté, sans plafond de débit,
-et les réglages de la fenêtre sont perdus à chaque lancement.
+Aujourd'hui, tout téléchargement démarre dès qu'il est ajouté et rien ne limite le débit.
 
-Scénario de réussite : l'utilisateur ajoute 20 liens le soir ; PyDM en télécharge 3 à
-la fois entre 01:00 et 07:00, sans dépasser la limite de débit choisie, puis éteint
-l'ordinateur quand la file est vide.
+Scénario de réussite : l'utilisateur ajoute 20 liens avec « Plus tard » ; PyDM en télécharge 3 à
+la fois entre 01:00 et 07:00 sans dépasser la limite de débit choisie, puis éteint l'ordinateur
+quand la file est vide. Pendant la journée, un lien envoyé avec « Télécharger » démarre aussitôt
+(dans la limite des téléchargements simultanés), sans attendre la nuit.
 
 ## Contraintes
 
-- Bibliothèque standard uniquement (Tkinter pour l'interface ; yt-dlp et ffmpeg restent optionnels).
-- Tout reste dans `pydm.py` : `install.sh` et `pydm_host.py` ne changent pas.
-- Textes de l'interface et documentation en français ; identifiants du code en anglais.
-- La ligne de commande (`run_cli`) n'est pas concernée, sauf qu'elle profite du `RateLimiter` (désactivé par défaut).
+- `pydm/scheduler.py` et le limiteur : bibliothèque standard, sans Qt.
+- Textes en français ; identifiants en anglais ; Python ≥ 3.9.
+- L'extension et le protocole de messagerie native ne changent pas.
 
 ## Hors périmètre
 
-- Plusieurs files nommées (comme IDM).
-- Limite de vitesse par téléchargement.
-- PyDM actif fenêtre fermée : fermer la fenêtre quitte toujours PyDM (relève de l'étape 3).
-- Glisser-déposer pour réordonner (les boutons suffisent).
+Plusieurs files nommées ; limite de vitesse par téléchargement ; glisser-déposer pour réordonner.
 
-## 1. Modèle de la file
+## 1. États voulus
 
-Chaque tâche (`Download`, `VideoDownload`, via `_Task`) reçoit un attribut `want` :
+Chaque tâche (`_Task`) reçoit un attribut `want` :
 
-| `want` | Fixé par | Effet |
+| `want` | Fixé par | Démarre quand |
 |---|---|---|
-| `"queue"` | ajout (manuel, extension, presse-papiers), bouton ▶ Reprendre | attend son tour dans la file |
-| `"force"` | bouton ⏩ Forcer | démarre immédiatement, ignore `max_active` et la plage horaire |
-| `"stop"` | bouton ⏸ Pause, ou erreur détectée par le scheduler | le scheduler ne la démarre plus |
+| `"now"` | Télécharger (fenêtre d'ajout), ajout direct (« Ne plus demander », extension, Ctrl+V, dépôt), Reprendre | une place est libre (`max_active`) ; la plage horaire ne le bloque pas |
+| `"later"` | Plus tard (fenêtre d'ajout), clic droit « Mettre dans la file » | la file planifiée est active (§ 2) et une place est libre |
+| `"force"` | Forcer | immédiatement, hors `max_active` et hors plage |
+| `"stop"` | Pause, erreur | jamais (action de l'utilisateur) |
 
-Valeur par défaut à la création : `"queue"`.
+Défaut à la création : `"now"`. L'ordre de la file est l'ordre des lignes du modèle
+(`DownloadModel.tasks()`).
 
-L'ordre de la file est l'ordre des lignes de la liste (`tree.get_children()`).
-
-## 2. `Scheduler`
-
-Classe indépendante de Tkinter et du réseau.
+## 2. `Scheduler` (`pydm/scheduler.py`)
 
 ```python
-Scheduler(max_active=3, schedule=None)
-    # schedule : None (pas de plage) ou (start, end) en datetime.time
-tick(tasks, now) -> bool
-    # tasks : liste ordonnée ; now : datetime. Renvoie True une seule fois quand la file se termine.
-in_window(now) -> bool
-next_start(now) -> datetime | None   # pour l'affichage « reprise à 01:00 »
+Scheduler(max_active=3, window=None)    # window : None ou (datetime.time début, datetime.time fin)
+scheduler.queue_started: bool           # file démarrée à la main
+start_queue() / stop_queue()
+queue_active(now) -> bool               # dans la plage (si définie) ou démarrée à la main
+next_start(now) -> datetime | None      # prochain début de plage, pour l'affichage
+tick(tasks, now) -> bool                # True une seule fois quand tout est terminé (§ 2.5)
 ```
 
 Les tâches ne sont manipulées que via `start()`, `pause()`, `running`, `finished`, `error`,
-`want` et `status`.
+`want`, `status`. `tick` applique dans l'ordre :
 
-`tick` applique dans l'ordre :
+1. **Erreurs** : tâche non `running`, non `finished`, `error` non vide et `want != "stop"` →
+   `want = "stop"` (statut « Erreur : … » conservé).
+2. **Fin de plage** : si la file planifiée n'est pas active, chaque tâche `later` en cours est
+   mise en pause (`pause()`) et reste `later`. Plage à cheval sur minuit gérée (début > fin) ;
+   début == fin = toute la journée. `stop_queue()` met aussi en pause les `later` en cours.
+3. **Places** : `libres = max_active − nb de tâches now/later en cours`. On démarre, dans l'ordre
+   de la liste, d'abord les `now` en attente, puis — si la file est active — les `later` en
+   attente. Une tâche en cours d'arrêt (`running` encore vrai) n'est pas redémarrée.
+   Les `force` sont démarrées immédiatement (une fois) et ne comptent pas dans `max_active`.
+4. **Statuts d'attente** (tâche non running, non finished, sans erreur) :
+   `now` → « En file » ; `later` → « En file planifiée », ou « En file planifiée (reprise à
+   HH:MM) » si une plage est définie et inactive.
+5. **Fin** : le scheduler retient s'il a démarré au moins une tâche `later` (`armed`). Quand
+   `armed` et qu'aucune tâche `now`/`later` n'est en attente ni en cours (et aucune `force` en
+   cours), `tick` renvoie `True`, remet `armed` à faux et `queue_started` à faux.
 
-1. **Erreurs** : une tâche non `running`, non `finished`, avec `error` non vide et `want != "stop"`
-   passe à `want = "stop"` (son statut « Erreur : … » est conservé).
-2. **Plage horaire** : si `schedule` est défini et que `now` est hors plage, chaque tâche
-   `want == "queue"` en cours est mise en pause (`pause()`) et reste `"queue"`. La plage
-   peut chevaucher minuit (`start > end`, ex. 23:00–07:00). `start == end` signifie toute la journée.
-   Aucune tâche `"queue"` ne démarre hors plage. Les tâches `"force"` ne sont pas concernées.
-3. **Places libres** (dans la plage, ou sans plage) : `libres = max_active − nb de tâches
-   "queue" running`. Les premières tâches `"queue"` non running et non finished, dans l'ordre
-   de la liste, reçoivent `start()` jusqu'à épuisement des places.
-4. **Statut d'attente** : une tâche `"queue"` non running, non finished et sans erreur affiche
-   « En file », ou « En file (reprise à HH:MM) » hors plage.
-5. **Fin de file** : le scheduler retient s'il a démarré au moins une tâche (`armed`). Quand
-   `armed` est vrai et qu'aucune tâche `"queue"` n'est en attente ni en cours (et qu'aucune
-   `"force"` ne tourne), `tick` renvoie `True` et remet `armed` à faux. Le signal ne revient
-   donc qu'après un nouveau démarrage par la file.
+Changer l'ordre de la liste n'interrompt aucune tâche en cours.
 
-Une tâche mise en pause par le scheduler doit avoir fini de s'arrêter (`running` faux) avant
-d'être redémarrée ; `start()` ne fait déjà rien si le thread tourne encore.
+## 3. Limite de vitesse
 
-Changer l'ordre de la liste n'interrompt aucune tâche en cours : l'ordre ne compte qu'à
-l'attribution d'une place libre.
+`RateLimiter(rate=0, clock=time.monotonic)` dans `pydm/scheduler.py`, instance de module
+`LIMITER` ; `rate` en octets/s (0 = illimité), modifiable à chaud ; `consume(n, stop_evt)` bloque
+jusqu'à disposer de `n` octets, attente par `stop_evt.wait(min(délai, 0.25))` (pause réactive,
+changement de `rate` pris en compte) ; capacité du seau `max(rate × 0,5, CHUNK)`.
 
-## 3. `RateLimiter`
+- `Download._worker` : `LIMITER.consume(len(buf), self.stop_evt)` après chaque lecture.
+- `VideoDownload._hook` : écart de `downloaded_bytes` depuis l'appel précédent (verrou propre à
+  la tâche ; écart négatif = nouveau fichier, compteur remis à zéro), puis `consume`.
+- Limite connue : quand yt-dlp délègue à ffmpeg (certains flux en direct), la limite ne s'applique
+  pas (LISEZMOI).
 
-Seau à jetons partagé, thread-safe ; une instance de module `LIMITER = RateLimiter()`.
+## 4. Réglages (`store.DEFAULTS`)
 
-```python
-RateLimiter(rate=0, clock=time.monotonic)
-rate              # octets/s, modifiable à chaud ; 0 = illimité
-consume(n, stop_evt)   # bloque jusqu'à disposer de n octets ; retourne tôt si stop_evt est levé
-```
+| Clé | Défaut | Contrôle |
+|---|---|---|
+| `max_active` | 3 | entier 1–10 |
+| `speed_on` | `false` | bool |
+| `speed_kbps` | 2048 | entier 16–1 000 000 |
+| `schedule_on` | `false` | bool |
+| `schedule_start` / `schedule_end` | `"01:00"` / `"07:00"` | chaîne `HH:MM` valide |
+| `end_action` | `"none"` | `none`, `quit`, `suspend`, `poweroff` |
 
-- Capacité du seau : `max(rate * 0.5, CHUNK)`.
-- L'attente se fait par `stop_evt.wait(délai)` : une pause reste instantanée sous une limite basse.
-- Passer `rate` à 0 débloque les attentes en cours au prochain réveil (délai d'attente plafonné à 0,25 s).
-
-Branchement :
-
-- `Download._worker` : `LIMITER.consume(len(buf), self.stop_evt)` après chaque `r.read(CHUNK)`.
-- `VideoDownload._hook` : calcul de l'écart de `downloaded_bytes` depuis l'appel précédent,
-  sous un verrou propre à la tâche (yt-dlp appelle le hook depuis plusieurs threads de
-  fragments), puis `LIMITER.consume(écart, self.stop_evt)`. L'écart négatif (nouveau fichier,
-  ex. audio après vidéo) remet le compteur à zéro sans consommer.
-- Limite connue : quand yt-dlp délègue à ffmpeg (certains flux en direct), le hook n'est pas
-  appelé et la limite ne s'applique pas. À indiquer dans LISEZMOI.md.
-
-## 4. Réglages persistants
-
-Fichier `~/.config/pydm/settings.json` (`SETTINGS_FILE`), fonctions `load_settings()` et
-`save_settings(d)`. Valeurs par défaut (`DEFAULT_SETTINGS`) utilisées pour toute clé absente
-ou de type invalide, et pour tout le fichier s'il est illisible :
-
-| Clé | Défaut |
-|---|---|
-| `folder` | dossier par défaut actuel (`~/Téléchargements` ou `~/Downloads`) |
-| `parts` | 8 |
-| `quality` | `"Meilleure"` |
-| `browser` | `"Aucun"` |
-| `clipboard` | `true` |
-| `max_active` | 3 (1 à 10) |
-| `speed_on` | `false` |
-| `speed_kbps` | 2048 |
-| `schedule_on` | `false` |
-| `schedule_start` / `schedule_end` | `"01:00"` / `"07:00"` |
-| `end_action` | `"none"` (`"quit"`, `"suspend"`, `"poweroff"`) |
-
-- Les options `-o` et `-n` passées explicitement en ligne de commande l'emportent sur `folder`
-  et `parts` enregistrés.
-- Écriture : à l'OK des Préférences, au changement de la case de limite, et à la fermeture.
-  Écriture atomique (fichier temporaire + `os.replace`).
+Valeur invalide → défaut (règles existantes de `store`).
 
 ## 5. Session
 
-`session.json` est écrit dans l'ordre de la liste et chaque entrée gagne `"want"`.
-Au chargement : `"queue"` et `"force"` → `"queue"` ; `"stop"` → `"stop"` (statut « En pause ») ;
-entrée sans `"want"` (ancien format) → `"stop"`, comme le comportement actuel.
+`entry_from_task` enregistre `want`. Au chargement : `now`/`force` → `now` (reprennent seuls),
+`later` → `later`, `stop` → `stop` (« En pause ») ; entrée sans `want` → `stop`.
 
-## 6. Interface
+## 6. Interface Qt
 
-Fenêtre principale :
-
-- Boutons du bas : `▶ Reprendre` (`want="queue"`), `⏸ Pause` (`want="stop"` + `pause()`),
-  `⏩ Forcer` (`want="force"` + `start()`), `▲` / `▼` (déplacer la sélection d'une ligne),
-  `⤒` (en tête de file), `✖ Retirer`, `📂 Ouvrir le dossier` ; à droite `⚙ Préférences`.
-- Case à cocher « Limiter à X Mo/s » (libellé selon `speed_kbps`) : met à jour `LIMITER.rate`
-  et `speed_on`.
-- Ligne d'état sous la liste : « N en cours · M en file » suivi, si la plage est active,
-  de « · plage 01:00–07:00 » et, hors plage, de « (inactive, reprise à 01:00) ».
-- `add()` : la tâche créée reçoit `want="queue"` et n'est plus démarrée directement ; c'est le
-  scheduler qui la lance. La détection fichier/vidéo reste immédiate (thread `detect`).
-- `refresh()` appelle `scheduler.tick(tâches dans l'ordre de la liste, datetime.now())`.
-
-Fenêtre Préférences (`Toplevel` modal) : téléchargements simultanés (Spinbox 1–10), limite en
-Ko/s, case « Plage horaire » avec début/fin HH:MM, liste « Quand la file est terminée » :
-Ne rien faire / Quitter PyDM / Mettre en veille / Éteindre l'ordinateur. Un horaire invalide
-affiche un avertissement et la fenêtre reste ouverte. OK applique au scheduler et au limiteur,
-puis enregistre ; Annuler ne change rien.
+- **Barre d'en-tête** : boutons-icônes **Forcer** (`force`) et **Planifier** (`schedule`, menu :
+  Démarrer la file, Arrêter la file, séparateur, Planification…), entre « Ouvrir le dossier » et
+  « Rechercher ».
+- **Fenêtre Planification** (`pydm/gui/schedule.py`, `ScheduleDialog(settings)` →
+  `result_settings()`) : simultanés (1–10), case + limite en Ko/s, case « Plage horaire » + début
+  et fin `HH:MM` (`QTimeEdit`), « Quand la file est terminée » (Ne rien faire / Quitter PyDM /
+  Mettre en veille / Éteindre l'ordinateur). OK applique au scheduler et au limiteur puis
+  enregistre ; Annuler ne change rien.
+- **Barre d'état** : à gauche « N en cours · M en file · plage HH:MM–HH:MM » (+ « (reprise à
+  HH:MM) » hors plage ; « · file démarrée » si démarrée à la main) ; à droite, avant la courbe,
+  bouton bascule « Limite X Mo/s » (`speed_on`), en surbrillance quand actif.
+- **Clic droit** : Reprendre (`now`), Pause (`stop`), Forcer (`force`), Mettre dans la file
+  (`later`), séparateur, Monter (Ctrl+↑), Descendre (Ctrl+↓), En tête de file (Ctrl+Origine),
+  puis les entrées existantes. Réordonner sur une liste triée par colonne enlève le tri.
+  `DownloadModel.move(rows, delta)` / `move_to_top(rows)`.
+- **Boutons existants** : Reprendre → `want="now"` ; Pause → `want="stop"` + `pause()` ; Espace →
+  bascule `now`/`stop`.
+- **Fenêtre d'ajout** : Télécharger → `now` ; Plus tard → `later` (au lieu d'« en pause »).
+- **Barre système** : Démarrer la file / Arrêter la file dans le menu.
+- `MainWindow.tick()` appelle `scheduler.tick(model.tasks(), datetime.now())`.
 
 ## 7. Action finale
 
-Quand `tick` renvoie `True` et que `end_action != "none"` : fenêtre de compte à rebours de 60 s
-(« Éteindre l'ordinateur dans 42 s… ») avec un bouton Annuler. À échéance :
+Quand `tick` renvoie `True` et `end_action != "none"` : dialogue « Éteindre l'ordinateur dans
+60 s… » (libellé selon l'action) avec Annuler, et notification si la fenêtre est masquée. À
+échéance : `quit` → `quit_app()` ; `suspend` / `poweroff` → `save_session()` puis `systemctl
+suspend` / `systemctl poweroff` (`subprocess.run`, échec → message d'erreur, PyDM reste ouvert).
 
-- `quit` : `on_close()`.
-- `suspend` / `poweroff` : `save_session()`, puis `systemctl suspend` / `systemctl poweroff`.
-  En cas d'échec (code de retour non nul, commande absente), message d'erreur ; PyDM reste ouvert.
+## 8. Tests
 
-## 8. Erreurs
+- `test_scheduler.py` (fausses tâches, `now` choisi) : `max_active` ; `now` avant `later` ;
+  `later` bloqué hors file, démarré par `start_queue()` ou dans la plage ; plage à cheval sur
+  minuit ; début == fin ; pause des `later` en fin de plage et à `stop_queue()` ; `force` hors
+  limite et hors plage ; erreur → `stop` ; statuts « En file » / « En file planifiée (reprise à
+  01:00) » ; signal de fin une seule fois puis réarmé ; `now` seuls ne déclenchent pas la fin.
+- `test_ratelimiter.py` (fausse horloge) : débit respecté ; `rate=0` sans attente ; `stop_evt`
+  débloque ; changement de `rate` à chaud ; intégration : serveur de test, 4 Mo, 4 connexions,
+  2 Mo/s → durée ≥ 1,5 s, contenu identique.
+- `test_store.py` : nouvelles clés et validation (horaire invalide, `max_active` hors bornes).
+- Session : aller-retour de `want` et anciennes entrées.
+- Interface (hors écran) : Forcer / Mettre dans la file / Reprendre / Pause fixent `want` ;
+  réordonnancement ; barre d'état ; bascule de limite → `LIMITER.rate` ; `ScheduleDialog`
+  (horaire et valeurs) ; fenêtre d'ajout Plus tard → `later` ; action finale `quit` avec
+  annulation (minuteur raccourci dans le test).
+- Vérification manuelle par l'utilisateur : plage réglée sur les minutes à venir, action finale.
 
-- `settings.json` illisible : valeurs par défaut, pas de message ; le fichier est réécrit au prochain enregistrement.
-- Tâche en erreur : sortie de la file (`want="stop"`), l'utilisateur peut la relancer par ▶ Reprendre.
-- Échec de `systemctl` : voir § 7.
+## 9. Documentation
 
-## 9. Tests
-
-`unittest` (bibliothèque standard), dossier `tests/`, lancement :
-`python3 -m unittest discover tests`. Les tests importent `pydm` sans ouvrir de fenêtre.
-
-- `test_scheduler.py` (fausses tâches, `now` choisi) : respect de `max_active` ; ordre de la
-  file ; tâche forcée hors limite et hors plage ; tâche en erreur passée à `"stop"` ; pause hors
-  plage puis reprise ; plage à cheval sur minuit ; `start == end` ; signal de fin émis une seule
-  fois et réarmé après un nouveau démarrage.
-- `test_ratelimiter.py` (fausse horloge) : débit moyen respecté ; `rate = 0` sans attente ;
-  `stop_evt` débloque `consume` ; changement de `rate` à chaud.
-- `test_settings.py` : défauts sans fichier ; fichier corrompu ; clé de mauvais type ;
-  aller-retour écriture/lecture (dossier de config redirigé vers un dossier temporaire).
-- `test_download_throttle.py` (intégration) : serveur HTTP local gérant `Range`, fichier de
-  4 Mo, 4 connexions, `LIMITER.rate = 2 Mo/s` : contenu identique et durée ≥ 1,5 s ;
-  sans limite : contenu identique.
-
-L'interface Tkinter est vérifiée manuellement : ajout de 5 liens avec `max_active=2`,
-Forcer, réordonnancement, case de limite, plage horaire réglée sur les minutes à venir,
-action finale `quit` avec annulation puis sans.
-
-## 10. Documentation
-
-- LISEZMOI.md : section « File d'attente, limite de vitesse et planification » ; limite ffmpeg.
-- LISEZMOI.md (section développeurs) : commande des tests.
+LISEZMOI / README (file, Forcer, Plus tard, planification, limite, action finale ; limite
+ffmpeg), CHANGELOG.
