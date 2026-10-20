@@ -16,7 +16,21 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFrame, QHBoxLayout
 from .. import __version__, ipc, store
 from ..analyze import analyze
 from ..scheduler import LIMITER, Scheduler, parse_hhmm
+from ..filetypes import _BY_EXT
 from ..util import human, unique_path
+
+MEDIA_EXTS = {ext for ext, cat in _BY_EXT.items() if cat in ("video", "music")}
+
+
+def video_stem(name):
+    """Nom choisi pour une vidéo, sans son extension (None : nom donné par le titre)."""
+    n = (name or "").strip()
+    stem, ext = os.path.splitext(n)
+    if ext[1:].lower() in MEDIA_EXTS:
+        n = stem.strip()
+    if not n or (n.startswith(".") and n[1:].lower() in MEDIA_EXTS):
+        return None
+    return n
 from ..engine import BROWSERS, QUALITIES, Download, entry_from_task, make_download, task_from_entry
 from . import theme
 from .adddialog import AddDialog
@@ -40,6 +54,8 @@ class MainWindow(QMainWindow):
         self.scheduler = Scheduler()
         self.clock = datetime.now       # remplaçable dans les tests
         self.end_delay = 60             # secondes avant l'action finale
+        self.end_dialog = None          # compte à rebours en cours
+        self._end_errors = queue.Queue()    # résultats de systemctl (thread)
         self.overrides = dict(overrides or {})     # options -o / -n : pour cette session seulement
         self.factory = factory
         self.inbox = queue.Queue()      # messages de l'extension (thread IPC)
@@ -327,6 +343,9 @@ class MainWindow(QMainWindow):
         self.add_urls(urls)
 
     def add_urls(self, urls, headers=None, filename=None, kind="auto"):
+        if self.end_dialog:             # de nouveaux téléchargements : on n'éteint plus
+            self.end_dialog.reject()
+            self.statusBar().showMessage("Action de fin de file annulée : nouveau téléchargement", 8000)
         if self.settings["confirm_add"]:
             self._open_add_dialog(urls, headers, filename, kind)
             return
@@ -404,10 +423,15 @@ class MainWindow(QMainWindow):
         action = self.settings["end_action"]
         if action == "none":
             return
+        if self.end_dialog:
+            return
         if self.end_delay <= 0:
             self._end_action(action)
             return
         dlg = EndActionDialog(action, self.end_delay, self)
+        dlg.setAttribute(Qt.WA_DeleteOnClose)
+        self.end_dialog = dlg
+        dlg.finished.connect(lambda *_: setattr(self, "end_dialog", None))
         dlg.confirmed.connect(lambda: self._end_action(action))
         dlg.show()
         dlg.raise_()
@@ -419,9 +443,7 @@ class MainWindow(QMainWindow):
             self.quit_app()
             return
         self.save_session()
-        error = run_end_action(action)
-        if error:
-            QMessageBox.warning(self, "PyDM", error)
+        threading.Thread(target=lambda: self._end_errors.put(run_end_action(action)), daemon=True).start()
 
     def _enqueue(self, url, folder, parts, quality, browser, headers, filename, kind,
                  fmt=None, stem=None, want="now", route=None):
@@ -476,7 +498,7 @@ class MainWindow(QMainWindow):
                 return
             stem, filename = None, e.get("filename")
             if e["kind"] == "video":       # même titre déjà présent : « titre (1) »
-                stem = os.path.splitext(unique_path(folder, e["name"]))[0] if e.get("name") else None
+                stem = video_stem(unique_path(folder, e["name"])) if e.get("name") else None
             elif e.get("name"):
                 filename = e["name"]
             route = self._route(opts, folder) if e.get("auto_folder") else None    # type encore inconnu
@@ -513,6 +535,10 @@ class MainWindow(QMainWindow):
                 # la file la démarre (ou l'attend) ; une pause demandée pendant l'analyse est gardée
                 task.want = "stop" if getattr(placeholder, "user_stop", False) else want
                 self.dirty = True
+        while not self._end_errors.empty():
+            error = self._end_errors.get()
+            if error:
+                QMessageBox.warning(self, "PyDM", error)
         if self.scheduler.tick(self.model.tasks(), self.clock()):
             self.queue_finished()
         self.model.refresh()
@@ -596,13 +622,15 @@ class MainWindow(QMainWindow):
 
     def _context_menu(self, pos):
         sel = self.selected_tasks()
-        if not sel:
-            return
+        if sel:
+            self.build_context_menu(sel).exec(self.table.viewport().mapToGlobal(pos))
+
+    def build_context_menu(self, sel):
         menu = QMenu(self)
         menu.addAction(theme.icon("resume"), "Reprendre", self.resume_selected).setEnabled(
             any(not t.running and not t.finished for t in sel))
         menu.addAction(theme.icon("pause"), "Pause", self.pause_selected).setEnabled(
-            any(t.running or t.want != "stop" for t in sel))
+            any((t.running or t.want != "stop") and not t.finished for t in sel))
         menu.addAction(theme.icon("force"), "Forcer", self.force_selected)
         menu.addAction(theme.icon("schedule"), "Mettre dans la file", self.queue_selected)
         menu.addSeparator()
@@ -616,7 +644,7 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
         menu.addAction(theme.icon("remove"), "Retirer de la liste", self.remove_selected)
         menu.addAction("Supprimer le fichier…", self.delete_selected_files)
-        menu.exec(self.table.viewport().mapToGlobal(pos))
+        return menu
 
     def _double_click(self, index):
         t = self.model.task(self.proxy.mapToSource(index).row())
@@ -662,7 +690,10 @@ class MainWindow(QMainWindow):
             return
         for t in tasks:
             t.pause()
-            t.wait(5)
+        end = time.time() + 5
+        for t in tasks:
+            t.wait(max(0.0, end - time.time()))
+        files = [f for t in tasks for f in t.files()]       # l'état est écrit à la pause
         errors = []
         for f in files:
             try:
@@ -728,25 +759,43 @@ class MainWindow(QMainWindow):
         self.dirty = True
         self.tick()
 
-    def _reorder(self, mover):
-        rows = [self.model.row_of(t) for t in self.selected_tasks()]
-        if not rows:
-            return
+    def _unsort(self):
         self.proxy.sort(-1)                         # l'ordre de la liste devient celui de la file
         self.table.horizontalHeader().setSortIndicator(-1, Qt.AscendingOrder)
-        new = mover(rows)
+
+    def _reselect(self, tasks):
         sel = QItemSelection()
-        for r in new:
-            idx = self.proxy.mapFromSource(self.model.index(r, 0))
+        for t in tasks:
+            idx = self.proxy.mapFromSource(self.model.index(self.model.row_of(t), 0))
             sel.select(idx, idx)
         self.table.selectionModel().select(sel, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows)
+        if tasks:
+            first = self.proxy.mapFromSource(self.model.index(self.model.row_of(tasks[0]), 0))
+            self.table.selectionModel().setCurrentIndex(first, QItemSelectionModel.NoUpdate)
         self.dirty = True
 
     def move_selected(self, delta):
-        self._reorder(lambda rows: self.model.move(rows, delta))
+        """Échange avec la ligne visible voisine (filtres et recherche respectés)."""
+        tasks = self.selected_tasks()
+        if not tasks:
+            return
+        self._unsort()
+        for t in (tasks if delta < 0 else reversed(tasks)):
+            pr = self.proxy.mapFromSource(self.model.index(self.model.row_of(t), 0)).row() + delta
+            if not 0 <= pr < self.proxy.rowCount():
+                continue
+            other = self.model.task(self.proxy.mapToSource(self.proxy.index(pr, 0)).row())
+            if other not in tasks:
+                self.model.swap(self.model.row_of(t), self.model.row_of(other))
+        self._reselect(tasks)
 
     def move_selected_top(self):
-        self._reorder(self.model.move_to_top)
+        tasks = self.selected_tasks()
+        if not tasks:
+            return
+        self._unsort()
+        self.model.move_to_top([self.model.row_of(t) for t in tasks])
+        self._reselect(tasks)
 
     def resume_selected(self):
         for t in self.selected_tasks():

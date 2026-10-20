@@ -595,5 +595,90 @@ class QueueFixesTest(QueueTest):
         self.assertIsNone(placeholder._thread)
 
 
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class CorrectionsTest(QueueTest):
+    def add(self, w, name, want="stop", **kw):
+        t = FakeDownload(f"https://a.fr/{name}", self.cfg)
+        t.name, t.want = name, want
+        for k, v in kw.items():
+            setattr(t, k, v)
+        w.model.add(t)
+        return t
+
+    def test_monter_avec_filtre(self):
+        w = self.window()
+        for n in ("v1.mp4", "doc.pdf", "v2.mp4"):
+            self.add(w, n)
+        w.proxy.set_type("video")
+        w.table.selectRow(1)                     # v2 (visible n° 2)
+        w.move_selected(-1)
+        self.assertEqual([t.name for t in w.model.tasks()], ["v2.mp4", "doc.pdf", "v1.mp4"])
+        self.assertEqual([t.name for t in w.selected_tasks()], ["v2.mp4"])
+        self.assertEqual(w.model.task(w.proxy.mapToSource(w.table.currentIndex()).row()).name, "v2.mp4")
+
+    def test_compte_a_rebours_unique_et_annule(self):
+        self.settings["end_action"] = "poweroff"
+        w = self.window()
+        w.end_delay = 60
+        w.queue_finished()
+        first = w.end_dialog
+        w.queue_finished()
+        self.assertIs(w.end_dialog, first)       # pas de seconde fenêtre
+        w.add_urls(["https://a.fr/nouveau.bin"])
+        self.assertIsNone(w.end_dialog)          # un nouvel ajout annule l'action finale
+        self.assertFalse(first.isVisible())
+
+    def test_nom_video(self):
+        from pydm.gui.window import video_stem
+        self.assertEqual(video_stem("Clip.mp4"), "Clip")
+        self.assertEqual(video_stem("Mr. Smith"), "Mr. Smith")
+        self.assertEqual(video_stem("Artiste feat. X.mp3"), "Artiste feat. X")
+        self.assertIsNone(video_stem(".mp4"))
+        self.assertIsNone(video_stem("   "))
+
+    def test_supprimer_apres_la_pause(self):
+        from PySide6.QtWidgets import QMessageBox
+        w = self.window()
+        part = os.path.join(self.cfg, "x.bin.part")
+        state = os.path.join(self.cfg, "x.bin.pydm")
+        open(part, "w").close()
+        t = self.add(w, "x.bin", want="now", running=True)
+
+        def pause():
+            t.running = False
+            open(state, "w").close()             # l'état est écrit à la pause
+        t.pause = pause
+        t.files = lambda: [p for p in (part, state) if os.path.exists(p)]
+        w.table.selectRow(0)
+        with mock.patch.object(QMessageBox, "question", return_value=QMessageBox.Yes):
+            w.delete_selected_files()
+        self.assertFalse(os.path.exists(part))
+        self.assertFalse(os.path.exists(state))
+
+    def test_extinction_sans_figer(self):
+        import time as _time
+        from PySide6.QtWidgets import QMessageBox
+        self.settings["end_action"] = "suspend"
+        w = self.window()
+        w.end_delay = 0
+
+        def slow(action):
+            _time.sleep(1)
+            return "refusé"
+        with mock.patch("pydm.gui.window.run_end_action", side_effect=slow), \
+                mock.patch.object(QMessageBox, "warning") as warn:
+            t0 = _time.time()
+            w.queue_finished()
+            self.assertLess(_time.time() - t0, 0.5)
+            self.assertTrue(self.tick_until(w, lambda: warn.called, 3))
+
+    def test_pause_inactif_si_termine(self):
+        w = self.window()
+        self.add(w, "fini.bin", want="now", status="Terminé")
+        w.table.selectRow(0)
+        actions = {a.text(): a for a in w.build_context_menu(w.selected_tasks()).actions()}
+        self.assertFalse(actions["Pause"].isEnabled())
+
+
 if __name__ == "__main__":
     unittest.main()

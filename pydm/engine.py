@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Kokou Bernard KPEDZI
 """Moteur de téléchargement : fichiers directs multi-connexions et vidéos via yt-dlp."""
+import glob
 import json
 import os
 import re
@@ -355,9 +356,14 @@ class VideoDownload(_Task):
     resumable = True
 
     def files(self):
-        if not self.name:
+        """Fichier final et fichiers intermédiaires de yt-dlp (.fNNN, .part, .ytdl…)."""
+        if self.name:
+            base = os.path.splitext(self.path)[0]
+        elif self.stem and self.stem.strip():
+            base = os.path.join(self.folder, self.stem.replace("/", "_").strip())
+        else:
             return []
-        return [p for p in (self.path, self.path + ".part") if os.path.exists(p)]
+        return sorted(p for p in glob.glob(glob.escape(base) + ".*") if os.path.isfile(p))
 
     def _hook(self, d):
         if self.stop_evt.is_set():

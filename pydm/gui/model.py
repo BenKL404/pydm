@@ -127,6 +127,12 @@ class DownloadModel(QAbstractTableModel):
         self.layoutChanged.emit()
         return sorted(new)
 
+    def swap(self, a, b):
+        self.layoutAboutToBeChanged.emit()
+        for lst in (self._tasks, self._snaps):
+            lst[a], lst[b] = lst[b], lst[a]
+        self.layoutChanged.emit()
+
     def move_to_top(self, rows):
         rows = sorted(set(rows))
         self.layoutAboutToBeChanged.emit()

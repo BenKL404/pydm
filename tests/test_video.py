@@ -175,6 +175,17 @@ class VideoCookiesTest(unittest.TestCase):
         self.assertEqual(d.want, "stop")
 
 
+    def test_fichiers_intermediaires(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            names = ["Clip.mp4", "Clip.f137.mp4.part", "Clip.f140.m4a", "Clip.mp4.ytdl", "Autre.mp4"]
+            for n in names:
+                open(os.path.join(tmp, n), "w").close()
+            d = VideoDownload("https://vimeo.com/1", tmp, name="Clip.mp4")
+            self.assertEqual(sorted(os.path.basename(f) for f in d.files()), sorted(names[:4]))
+            pending = VideoDownload("https://vimeo.com/1", tmp, stem="Clip")
+            self.assertEqual(len(pending.files()), 4)
+
+
 class AttemptsTest(unittest.TestCase):
     def test_ytdlp_attempts_sans_cookies(self):
         self.assertEqual(list(ytdlp_attempts("https://a.fr/v", {"User-Agent": "x"}, "Aucun")), [{}])
