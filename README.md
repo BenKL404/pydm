@@ -93,8 +93,10 @@ Keep the `extension/` folder where it is: the browser reads it at every start.
 
 **Firefox**
 
-Firefox only installs Mozilla-signed extensions permanently:
-
+- **Recommended**: download `pydm-extension-1.0.0-signee.xpi` from the
+  [latest release](https://github.com/BenKL404/pydm/releases/latest), then in
+  `about:addons` → ⚙ → *Install Add-on From File*. It is signed by Mozilla and
+  stays installed.
 - **To try it out**: open `about:debugging#/runtime/this-firefox`, click
   **Load Temporary Add-on** and choose `pydm-extension.zip`. It is removed when
   Firefox closes.

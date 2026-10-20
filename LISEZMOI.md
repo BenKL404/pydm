@@ -32,8 +32,12 @@ navigateur plus tard, relancez simplement `./install.sh`.
 Laissez le dossier `extension/` à sa place : le navigateur le lit à chaque démarrage.
 
 ### Firefox
-Firefox n'installe de façon permanente que les extensions signées par Mozilla.
-Il y a trois possibilités :
+- **Recommandé** : téléchargez `pydm-extension-1.0.0-signee.xpi` depuis la
+  [dernière version](https://github.com/BenKL404/pydm/releases/latest), puis dans
+  `about:addons` → ⚙ → *Installer un module depuis un fichier*. Elle est signée par
+  Mozilla et reste installée.
+
+Autres possibilités (Firefox n'installe de façon permanente que les extensions signées) :
 
 - **Pour essayer** : ouvrez `about:debugging#/runtime/this-firefox`, cliquez sur
   **Charger un module complémentaire temporaire** et choisissez `pydm-extension.zip`.
