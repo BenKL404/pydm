@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import tempfile
 import threading
 import time
 import urllib.parse
@@ -392,11 +393,16 @@ class VideoDownload(_Task):
         if audio and ffmpeg:
             opts["postprocessors"] = [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3",
                                        "preferredquality": "0"}]
+        cookie_file = None
         if self.browser and self.browser != "Aucun":
             opts["cookiesfrombrowser"] = (self.browser,)
             opts["http_headers"] = {k: v for k, v in self.headers.items() if k != "Cookie"}
         elif self.headers:
-            opts["http_headers"] = self.headers
+            # yt-dlp refuse les cookies passés en en-tête (YouTube répond « The page needs to be
+            # reloaded ») : ceux transmis par l'extension passent par un fichier de cookies.
+            opts["http_headers"] = {k: v for k, v in self.headers.items() if k != "Cookie"}
+            if self.headers.get("Cookie"):
+                cookie_file = opts["cookiefile"] = _cookie_file(self.url, self.headers["Cookie"])
         try:
             os.makedirs(self.folder, exist_ok=True)
             with yt_dlp.YoutubeDL(opts) as ydl:
@@ -417,6 +423,30 @@ class VideoDownload(_Task):
             self.status = f"Erreur : {msg[:150]}"
         finally:
             self.speed = 0.0
+            if cookie_file:
+                try:
+                    os.remove(cookie_file)
+                except OSError:
+                    pass
+
+
+def _cookie_file(url, header):
+    """Écrit l'en-tête Cookie au format Netscape (celui de yt-dlp), pour le domaine du lien."""
+    parsed = urllib.parse.urlparse(url)
+    host = (parsed.hostname or "").lower()
+    for prefix in ("www.", "m."):
+        if host.startswith(prefix):
+            host = host[len(prefix):]
+            break
+    secure = "TRUE" if parsed.scheme == "https" else "FALSE"
+    fd, path = tempfile.mkstemp(prefix="pydm-cookies-", suffix=".txt")     # créé en 0600
+    with os.fdopen(fd, "w") as f:
+        f.write("# Netscape HTTP Cookie File\n")
+        for part in header.split(";"):
+            name, sep, value = part.strip().partition("=")
+            if sep and name:
+                f.write(f".{host}\tTRUE\t/\t{secure}\t0\t{name}\t{value}\n")
+    return path
 
 
 def have_ytdlp():
