@@ -22,8 +22,9 @@ from . import theme
 from .adddialog import AddDialog
 from .delegates import ProgressDelegate
 from .links import extract_urls
-from .model import DownloadFilter, DownloadModel
+from .model import DownloadFilter, DownloadModel, counts
 from .schedule import EndActionDialog, ScheduleDialog, run_end_action
+from .sidebar import Sidebar
 from .widgets import DetailPanel, SpeedSparkline
 
 WIDTHS = (300, 80, 190, 90, 80, 170, 120)
@@ -68,8 +69,16 @@ class MainWindow(QMainWindow):
         self.vsplit.setStretchFactor(0, 1)
         self.vsplit.setCollapsible(0, False)
         self.vsplit.setSizes([440, 130])
-        self.hsplit = QSplitter(Qt.Horizontal)     # la barre latérale s'y ajoutera (étape 3)
+        self.sidebar = Sidebar()
+        self.sidebar.filter_changed.connect(self._filter_changed)
+        self.sidebar.folder_requested.connect(self.open_category_folder)
+        self.sidebar.setVisible(self.settings["sidebar"])
+        self.hsplit = QSplitter(Qt.Horizontal)
+        self.hsplit.addWidget(self.sidebar)
         self.hsplit.addWidget(self.vsplit)
+        self.hsplit.setStretchFactor(1, 1)
+        self.hsplit.setCollapsible(1, False)
+        self.hsplit.setSizes([180, 920])
         lay.addWidget(self.hsplit, 1)
         self.setCentralWidget(central)
         self.status_left = QLabel()
@@ -159,6 +168,9 @@ class MainWindow(QMainWindow):
         self.btn_menu = self._tool("menu", "Menu", lambda: None)
         self.menu = QMenu(self)
         self.menu.addAction("Préférences…\tCtrl+,", self.open_preferences)
+        self.sidebar_action = self.menu.addAction("Barre latérale\tCtrl+B", self.toggle_sidebar)
+        self.sidebar_action.setCheckable(True)
+        self.sidebar_action.setChecked(self.settings["sidebar"])
         self.menu.addAction("À propos de PyDM", self.about)
         self.menu.addSeparator()
         self.menu.addAction("Quitter\tCtrl+Q", self.quit_app)
@@ -205,7 +217,7 @@ class MainWindow(QMainWindow):
 
     def _shortcuts(self):
         for keys, slot in ((QKeySequence.Find, self.toggle_search), ("Ctrl+O", self.open_folder),
-                           ("Ctrl+,", self.open_preferences),
+                           ("Ctrl+,", self.open_preferences), ("Ctrl+B", self.toggle_sidebar),
                            ("Ctrl+Q", self.quit_app)):
             QShortcut(QKeySequence(keys), self, slot)
 
@@ -274,7 +286,8 @@ class MainWindow(QMainWindow):
         w = self.settings.get("window") or {}
         for key, restore in (("geometry", self.restoreGeometry),
                              ("header", self.table.horizontalHeader().restoreState),
-                             ("splitter", self.vsplit.restoreState)):
+                             ("splitter", self.vsplit.restoreState),
+                             ("hsplit", self.hsplit.restoreState)):
             if w.get(key):
                 restore(QByteArray.fromBase64(w[key].encode()))
 
@@ -283,6 +296,7 @@ class MainWindow(QMainWindow):
             "geometry": bytes(self.saveGeometry().toBase64()).decode(),
             "header": bytes(self.table.horizontalHeader().saveState().toBase64()).decode(),
             "splitter": bytes(self.vsplit.saveState().toBase64()).decode(),
+            "hsplit": bytes(self.hsplit.saveState().toBase64()).decode(),
         }
         store.save_settings(self.settings)
 
@@ -326,6 +340,33 @@ class MainWindow(QMainWindow):
         """Catégorie → dossier de rangement (sous le dossier principal, ou `base`)."""
         settings = {**opts, "folder": base or opts["folder"]}
         return lambda cat: store.folder_for(cat, settings)
+
+    def _filter_changed(self, state, kind):
+        self.proxy.set_state(state)
+        self.proxy.set_type(kind)
+        self._update_empty()
+
+    def _update_empty(self):
+        if self.model.rowCount() == 0:
+            self.empty.setText("Collez un lien ou glissez-le ici pour commencer")
+        else:
+            self.empty.setText("Aucun téléchargement dans cette vue")
+        self.empty.setVisible(self.proxy.rowCount() == 0)
+
+    def toggle_sidebar(self):
+        visible = self.sidebar.isHidden()
+        self.sidebar.setVisible(visible)
+        self.sidebar_action.setChecked(visible)
+        self._set("sidebar", visible)
+
+    def open_category_folder(self, category):
+        folder = store.folder_for(category, {**self.settings, **self.overrides})
+        try:
+            os.makedirs(folder, exist_ok=True)
+        except OSError as e:
+            QMessageBox.warning(self, "PyDM", f"Dossier inutilisable : {folder}\n{e.strerror}")
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
 
     def apply_queue_settings(self):
         """Simultanés, plage horaire et limite de vitesse d'après les réglages."""
@@ -479,7 +520,9 @@ class MainWindow(QMainWindow):
         if self.dirty:
             self.dirty = False
             self.save_session()
-        self.empty.setVisible(self.model.rowCount() == 0)
+        self.proxy.refilter()
+        self.sidebar.update_counts(*counts(self.model.tasks()))
+        self._update_empty()
         self._update_status()
         self._update_actions()
         self._update_detail()

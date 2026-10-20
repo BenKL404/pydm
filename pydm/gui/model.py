@@ -6,7 +6,8 @@ from datetime import datetime
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt
 from PySide6.QtGui import QColor
 
-from ..filetypes import category
+from ..engine import VideoDownload
+from ..filetypes import CATEGORIES, category
 from ..util import human, human_time
 from . import theme
 
@@ -25,6 +26,39 @@ def _eta(t):
     if t.running and t.size and t.speed > 0:
         return max(t.size - t.done, 0) / t.speed
     return None
+
+
+STATES = ("all", "active", "queued", "paused", "done", "error")
+
+
+def task_state(t):
+    """État affiché dans la barre latérale."""
+    if t.error:
+        return "error"
+    if t.finished:
+        return "done"
+    if t.running:
+        return "active"
+    return "queued" if t.want in ("now", "later", "force") else "paused"
+
+
+def task_category(t):
+    """Catégorie de rangement : une vidéo de streaming est « video » (« music » en Audio MP3)."""
+    if isinstance(t, VideoDownload):
+        return "music" if t.quality == "Audio MP3" else "video"
+    return category(t.name)
+
+
+def counts(tasks):
+    """Compteurs (par état, par catégorie) pour la barre latérale."""
+    states = dict.fromkeys(STATES, 0)
+    types = dict.fromkeys(("all",) + CATEGORIES, 0)
+    for t in tasks:
+        states["all"] += 1
+        states[task_state(t)] += 1
+        types["all"] += 1
+        types[task_category(t)] += 1
+    return states, types
 
 
 def state(t):
@@ -129,7 +163,7 @@ class DownloadModel(QAbstractTableModel):
         if role == PROGRESS_ROLE and col == 2:
             return (_ratio(t), state(t))
         if role == Qt.DecorationRole and col == 0:
-            return theme.type_icon(category(t.name))
+            return theme.type_icon(task_category(t))
         if role == Qt.ToolTipRole and col in (0, 5):
             return t.url if col == 0 else t.status
         if role == Qt.ForegroundRole and col == 5 and t.error:
@@ -180,19 +214,37 @@ class DownloadFilter(QSortFilterProxyModel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setSortRole(SORT_ROLE)
-        self._search = ""
+        self._search, self._state, self._type = "", "all", "all"
 
-    def set_search(self, text):
+    def _change(self, attr, value):
         if hasattr(self, "beginFilterChange"):     # Qt ≥ 6.9
             self.beginFilterChange()
-            self._search = (text or "").strip().lower()
+            setattr(self, attr, value)
             self.endFilterChange(QSortFilterProxyModel.Direction.Rows)
         else:
-            self._search = (text or "").strip().lower()
+            setattr(self, attr, value)
             self.invalidateFilter()
 
+    def set_search(self, text):
+        self._change("_search", (text or "").strip().lower())
+
+    def set_state(self, key):
+        self._change("_state", key)
+
+    def set_type(self, key):
+        self._change("_type", key)
+
+    def refilter(self):
+        """Les états changent en continu : réévaluer le filtre (appelé à chaque rafraîchissement)."""
+        if self._state != "all":
+            self._change("_state", self._state)
+
     def filterAcceptsRow(self, row, parent):
+        t = self.sourceModel().task(row)
+        if self._state != "all" and task_state(t) != self._state:
+            return False
+        if self._type != "all" and task_category(t) != self._type:
+            return False
         if not self._search:
             return True
-        t = self.sourceModel().task(row)
         return self._search in (t.name or "").lower() or self._search in t.url.lower()

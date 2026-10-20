@@ -80,6 +80,11 @@ version `.deb` ou `.rpm` du navigateur. Firefox en Snap (Ubuntu) fonctionne.
   racine. Les sous-dossiers sont créés au premier fichier. Dans les préférences, on
   peut désactiver le rangement ou changer chaque dossier (un nom de sous-dossier, ou
   un chemin complet comme `/media/disque/Films`).
+- **Barre latérale** (Ctrl+B pour l'afficher ou la masquer) : filtre la liste par
+  **état** (En cours, En file, En pause, Terminés, En erreur) et par **type** (Vidéos,
+  Musique, Documents, Images, Archives, Programmes, Autres), les deux se combinent avec
+  la recherche ; un compteur suit chaque entrée. Clic droit sur un type → ouvrir son
+  dossier de rangement.
 - **Coller un lien** dans le champ du haut (ou n'importe où avec Ctrl+V), ou le
   **glisser-déposer** sur la fenêtre ; plusieurs liens à la fois sont acceptés.
 - Les menus **Qualité** et **Cookies** s'appliquent aux vidéos de streaming.

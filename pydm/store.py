@@ -27,6 +27,7 @@ DEFAULTS = {
     "autostart": False,
     "tray_hint_shown": False,
     "confirm_add": True,
+    "sidebar": True,
     "max_active": 3,
     "speed_on": False,
     "speed_kbps": 2048,

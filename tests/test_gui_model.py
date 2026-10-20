@@ -120,6 +120,59 @@ class ModelTest(unittest.TestCase):
 
 
 @unittest.skipUnless(HAS_QT, "PySide6 absent")
+class SidebarFilterTest(unittest.TestCase):
+    def setUp(self):
+        app()
+        from pydm.gui import model
+        self.m = model
+        self.model = model.DownloadModel()
+        self.proxy = model.DownloadFilter()
+        self.proxy.setSourceModel(self.model)
+
+    def names(self):
+        return sorted(self.proxy.data(self.proxy.index(r, 0)) for r in range(self.proxy.rowCount()))
+
+    def test_etat_et_categorie(self):
+        from pydm.engine import VideoDownload
+        cases = [(FakeTask("a.zip", running=True, status="Téléchargement"), "active", "archive"),
+                 (FakeTask("b.pdf", status="Terminé"), "done", "document"),
+                 (FakeTask("c.png", error="x", status="Erreur : x"), "error", "image"),
+                 (FakeTask("d.bin"), "paused", "other")]
+        queued = FakeTask("e.mp3")
+        queued.want = "later"
+        cases.append((queued, "queued", "music"))
+        for t, state, cat in cases:
+            self.assertEqual((self.m.task_state(t), self.m.task_category(t)), (state, cat), t.name)
+        v = VideoDownload("https://youtube.com/watch?v=1", "/tmp")
+        self.assertEqual(self.m.task_category(v), "video")
+        a = VideoDownload("https://youtube.com/watch?v=1", "/tmp", quality="Audio MP3")
+        self.assertEqual(self.m.task_category(a), "music")
+
+    def test_filtres_combines(self):
+        for t in (FakeTask("film.mkv", status="Terminé"), FakeTask("clip.mp4", running=True, status="x"),
+                  FakeTask("pycon.mp4", status="Terminé"), FakeTask("doc.pdf", status="Terminé")):
+            self.model.add(t)
+        self.proxy.set_state("done")
+        self.assertEqual(self.names(), ["doc.pdf", "film.mkv", "pycon.mp4"])
+        self.proxy.set_type("video")
+        self.assertEqual(self.names(), ["film.mkv", "pycon.mp4"])
+        self.proxy.set_search("pycon")
+        self.assertEqual(self.names(), ["pycon.mp4"])
+        self.proxy.set_search("")
+        self.proxy.set_state("all")
+        self.assertEqual(self.names(), ["clip.mp4", "film.mkv", "pycon.mp4"])
+
+    def test_compteurs(self):
+        for t in (FakeTask("a.mkv", status="Terminé"), FakeTask("b.mkv", running=True, status="x"),
+                  FakeTask("c.zip")):
+            self.model.add(t)
+        states, types = self.m.counts(self.model.tasks())
+        self.assertEqual((states["all"], states["done"], states["active"], states["paused"], states["error"]),
+                         (3, 1, 1, 1, 0))
+        self.assertEqual((types["all"], types["video"], types["archive"], types["music"]), (3, 2, 1, 0))
+
+
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
 class ProgressDelegateTest(unittest.TestCase):
     def render(self, task):
         from PySide6.QtCore import QRect

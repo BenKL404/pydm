@@ -39,6 +39,8 @@ over a video, and PyDM takes over.
   on demand, "Force" to jump the queue, reordering, a global speed limit
   toggled from the status bar, and an action when the queue is done (quit,
   suspend, power off, with 60 s to cancel).
+- **Sidebar filters** by state (active, queued, paused, finished, failed) and by
+  type (videos, music, documents, images…), combined with search, with live counts.
 - **A modern, dense interface** (Qt 6): real progress bars, light and dark
   themes that follow the system, sortable columns, search, a detail panel,
   right-click menu, keyboard shortcuts and drag-and-drop of links.

@@ -38,6 +38,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 - The Tkinter interface.
 
+- Sidebar with live counts to filter the list by state and by file type
+  (combined with search); right-click a type to open its folder; Ctrl+B to hide it.
 - Download queue: limit of simultaneous downloads, "Later" scheduled queue with a
   daily time window or manual start, "Force", reordering (Ctrl+↑/↓), global speed
   limit toggled from the status bar, and an end-of-queue action (quit, suspend,
