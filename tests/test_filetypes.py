@@ -13,6 +13,10 @@ class CategoryTest(unittest.TestCase):
         self.assertEqual(category(None), "other")
         self.assertEqual(category("rapport.pdf"), "document")
 
+    def test_images(self):
+        for name in ("photo.JPG", "logo.png", "anim.gif", "img.webp", "icone.svg", "IMG_0001.HEIC"):
+            self.assertEqual(category(name), "image", name)
+
 
 if __name__ == "__main__":
     unittest.main()

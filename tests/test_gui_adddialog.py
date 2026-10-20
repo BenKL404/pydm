@@ -1,3 +1,4 @@
+import os
 import tempfile
 import threading
 import time
@@ -76,7 +77,8 @@ class AddDialogTest(DialogCase):
         self.assertEqual(len(self.emitted), 1)
         tasks, start = self.emitted[0]
         self.assertIs(start, True)
-        self.assertEqual((tasks[0]["fmt"], tasks[0]["kind"], tasks[0]["folder"]), ("137+140", "video", self.cfg))
+        self.assertEqual((tasks[0]["fmt"], tasks[0]["kind"], tasks[0]["folder"]),
+                         ("137+140", "video", os.path.join(self.cfg, "Vidéos")))      # rangé par type
 
     def test_plus_tard(self):
         dlg = self.dialog(result())
@@ -236,6 +238,64 @@ class AddDialogFixesTest(DialogCase):
         self.assertEqual(self.emitted, [])
         self.assertTrue(dlg.isVisible())
         self.assertIs(self.settings["confirm_add"], True)
+
+
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class SortDialogTest(DialogCase):
+    def j(self, *p):
+        return os.path.join(self.cfg, *p)
+
+    def test_dossier_video_puis_musique(self):
+        dlg = self.dialog(result())
+        self.wait_filled(dlg)
+        self.assertEqual(dlg.folder_edit.text(), self.j("Vidéos"))
+        dlg.quality_box.setCurrentIndex(2)          # Audio seul · MP3
+        self.assertEqual(dlg.folder_edit.text(), self.j("Musique"))
+        dlg.quality_box.setCurrentIndex(0)
+        self.assertEqual(dlg.folder_edit.text(), self.j("Vidéos"))
+
+    def test_dossier_modifie_conserve(self):
+        dlg = self.dialog(result())
+        self.wait_filled(dlg)
+        dlg.folder_edit.setText("/tmp/ailleurs")
+        dlg.folder_edit.setModified(True)
+        dlg.quality_box.setCurrentIndex(2)
+        self.assertEqual(dlg.folder_edit.text(), "/tmp/ailleurs")
+
+    def test_fichier_document(self):
+        dlg = self.dialog(result(kind="file", name="rapport.pdf", choices=[]), urls=["https://a.fr/r"])
+        self.wait_filled(dlg)
+        self.assertEqual(dlg.folder_edit.text(), self.j("Documents"))
+
+    def test_rangement_desactive(self):
+        self.settings["sort_by_type"] = False
+        dlg = self.dialog(result())
+        self.wait_filled(dlg)
+        self.assertEqual(dlg.folder_edit.text(), self.cfg)
+
+    def test_erreur_dossier_auto(self):
+        dlg = self.dialog(result(kind="error", error="x", choices=[], name=None))
+        self.wait_filled(dlg)
+        task = dlg.collect()[0]
+        self.assertEqual(task["folder"], self.cfg)
+        self.assertIs(task["auto_folder"], True)
+
+    def test_lot_dossiers_par_categorie(self):
+        urls = ["https://a.fr/v", "https://a.fr/a.zip", "https://a.fr/p"]
+        res = {urls[0]: result(), urls[1]: result(kind="file", name="a.zip", choices=[]),
+               urls[2]: result(kind="error", error="x", choices=[], name=None)}
+        dlg = self.dialog(urls=urls, analyzer=lambda u, *a, **k: res[u])
+        self.wait_filled(dlg)
+        from PySide6.QtCore import Qt
+        dlg.table.item(2, 0).setCheckState(Qt.Checked)
+        tasks = {t["url"]: t for t in dlg.collect()}
+        self.assertEqual(tasks[urls[0]]["folder"], self.j("Vidéos"))
+        self.assertEqual(tasks[urls[1]]["folder"], self.j("Archives"))
+        self.assertEqual((tasks[urls[2]]["folder"], tasks[urls[2]]["auto_folder"]), (self.cfg, True))
+        dlg.videos_box.setCurrentText("Audio MP3")
+        dlg.folder_edit.setText("/srv/dl")
+        self.assertEqual(dlg.collect()[0]["folder"], "/srv/dl/Musique")
+        self.assertEqual(dlg.folder_label.text(), "Dossier principal")
 
 
 if __name__ == "__main__":

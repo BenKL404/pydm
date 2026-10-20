@@ -46,5 +46,18 @@ class PrefsTest(unittest.TestCase):
         self.assertIs(dlg.result_settings()["confirm_add"], False)
 
 
+    def test_rangement(self):
+        dlg = self.prefs.PreferencesDialog(dict(self.store.DEFAULTS), tray_available=True)
+        self.assertTrue(dlg.sort_box.isChecked())
+        self.assertEqual(dlg.dir_edits["image"].text(), "Images")
+        dlg.sort_box.setChecked(False)
+        dlg.dir_edits["video"].setText("/media/disque/Films")
+        dlg.dir_edits["music"].setText("  ")
+        r = dlg.result_settings()
+        self.assertIs(r["sort_by_type"], False)
+        self.assertEqual(r["category_dirs"]["video"], "/media/disque/Films")
+        self.assertEqual(r["category_dirs"]["music"], "Musique")      # vide → valeur par défaut
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -74,6 +74,12 @@ version `.deb` ou `.rpm` du navigateur. Firefox en Snap (Ubuntu) fonctionne.
   **Annuler**. Plusieurs liens d'un coup ouvrent une seule fenêtre, avec une case par
   lien. « Ne plus demander » revient au téléchargement direct (à réactiver dans les
   préférences).
+- **Rangement par type, comme IDM** : chaque fichier va dans un sous-dossier de
+  `~/Téléchargements` selon son type — `Vidéos`, `Musique` (dont l'audio MP3 extrait
+  d'une vidéo), `Documents`, `Images`, `Archives`, `Programmes` ; le reste reste à la
+  racine. Les sous-dossiers sont créés au premier fichier. Dans les préférences, on
+  peut désactiver le rangement ou changer chaque dossier (un nom de sous-dossier, ou
+  un chemin complet comme `/media/disque/Films`).
 - **Coller un lien** dans le champ du haut (ou n'importe où avec Ctrl+V), ou le
   **glisser-déposer** sur la fenêtre ; plusieurs liens à la fois sont acceptés.
 - Les menus **Qualité** et **Cookies** s'appliquent aux vidéos de streaming.

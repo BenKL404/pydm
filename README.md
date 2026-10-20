@@ -31,6 +31,9 @@ over a video, and PyDM takes over.
   available video qualities and their sizes (1080p, 720p…, audio-only MP3),
   plus name and folder; download now, later (paused) or cancel. Several links
   at once open a single checklist window.
+- **Sorted by type, like IDM**: files go to `Vidéos`, `Musique`, `Documents`,
+  `Images`, `Archives` or `Programmes` under the download folder; each folder
+  can be renamed or moved to another disk in Preferences, or sorting turned off.
 - **A modern, dense interface** (Qt 6): real progress bars, light and dark
   themes that follow the system, sortable columns, search, a detail panel,
   right-click menu, keyboard shortcuts and drag-and-drop of links.

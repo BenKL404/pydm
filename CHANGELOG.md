@@ -38,6 +38,9 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 - The Tkinter interface.
 
+- Files are sorted into sub-folders by type (videos, music, documents, images,
+  archives, programs), configurable in Preferences; new "image" file type.
+
 ### Fixed
 
 - YouTube videos failing with "The page needs to be reloaded": videos are now

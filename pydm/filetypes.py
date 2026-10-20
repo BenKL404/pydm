@@ -2,12 +2,13 @@
 # Copyright (C) 2026 Kokou Bernard KPEDZI
 """Catégorie d'un fichier d'après son extension (icônes, filtres, rangement)."""
 
-CATEGORIES = ("video", "music", "document", "archive", "program", "other")
+CATEGORIES = ("video", "music", "document", "image", "archive", "program", "other")
 
 _EXTENSIONS = {
     "video": "mp4 mkv webm avi mov m4v flv wmv ts m2ts 3gp",
     "music": "mp3 m4a flac ogg opus wav aac wma",
     "document": "pdf doc docx odt rtf txt md epub xls xlsx ods ppt pptx odp csv",
+    "image": "jpg jpeg png gif webp svg bmp tif tiff heic heif avif ico",
     "archive": "zip rar 7z tar gz tgz bz2 xz zst iso tar.gz tar.xz tar.bz2 tar.zst",
     "program": "deb rpm appimage flatpakref run sh exe msi apk snap",
 }

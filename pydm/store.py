@@ -26,6 +26,9 @@ DEFAULTS = {
     "autostart": False,
     "tray_hint_shown": False,
     "confirm_add": True,
+    "sort_by_type": True,
+    "category_dirs": {"video": "Vidéos", "music": "Musique", "document": "Documents", "image": "Images",
+                      "archive": "Archives", "program": "Programmes"},
     "window": {},
 }
 CHOICES = {"theme": ("system", "light", "dark"), "quality": tuple(QUALITIES), "browser": BROWSERS}
@@ -73,6 +76,19 @@ def _valid(key, value):
     if key == "parts":
         return 1 <= value <= 32
     return key not in CHOICES or value in CHOICES[key]
+
+
+def folder_for(category, settings):
+    """Dossier d'un fichier de cette catégorie : sous-dossier du dossier principal, ou chemin absolu."""
+    base = os.path.expanduser(settings["folder"])
+    defaults = DEFAULTS["category_dirs"]
+    if not settings.get("sort_by_type", True) or category not in defaults:
+        return base
+    sub = (settings.get("category_dirs") or {}).get(category)
+    if not isinstance(sub, str) or not sub.strip():
+        sub = defaults[category]
+    sub = os.path.expanduser(sub.strip())
+    return sub if os.path.isabs(sub) else os.path.join(base, sub)
 
 
 def load_settings(config_dir=None):

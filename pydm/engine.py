@@ -13,6 +13,7 @@ import urllib.request
 from datetime import datetime
 from email.message import Message
 
+from .filetypes import category
 from .util import unique_path
 
 CHUNK = 64 * 1024
@@ -89,9 +90,10 @@ class _Task:
 
 
 class Download(_Task):
-    def __init__(self, url, folder, parts=8, name=None, headers=None, name_hint=None):
+    def __init__(self, url, folder, parts=8, name=None, headers=None, name_hint=None, route=None):
         self.url = url
         self.folder = folder
+        self.route = route      # catégorie → dossier, appliqué quand le nom est connu (nouveau téléchargement)
         self.headers = dict(headers or {})      # Cookie / Referer transmis par le navigateur
         self.name_hint = os.path.basename(name_hint) if name_hint else None
         self.parts = max(1, int(parts))
@@ -168,6 +170,8 @@ class Download(_Task):
         os.replace(tmp, self.state_path)
 
     def _prepare(self, size, ranges, name):
+        if not self.name and self.route:
+            self.folder = self.route(category(self.name_hint or name))
         os.makedirs(self.folder, exist_ok=True)
         if self.segments and self.size == size and self.ranges == ranges and os.path.exists(self.part_path):
             if not ranges:      # pas de reprise possible sans plages : on recommence
@@ -501,12 +505,14 @@ def looks_like_video(url, headers=None):
 
 
 def make_download(url, folder, parts=8, quality="Meilleure", browser="Aucun",
-                  headers=None, filename=None, kind="auto", fmt=None, stem=None):
+                  headers=None, filename=None, kind="auto", fmt=None, stem=None, route=None):
     """kind : "auto" (détection), "video" (yt-dlp) ou "file" (fichier direct)."""
     if (kind == "video" and have_ytdlp()) or (kind == "auto" and looks_like_video(url, headers)):
+        if route:
+            folder = route("music" if quality == "Audio MP3" else "video")
         return VideoDownload(url, folder, parts, quality=quality, browser=browser, headers=headers,
                              fmt=fmt, stem=stem)
-    return Download(url, folder, parts, headers=headers, name_hint=filename)
+    return Download(url, folder, parts, headers=headers, name_hint=filename, route=route)
 
 
 def entry_from_task(t):

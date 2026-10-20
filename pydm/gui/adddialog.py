@@ -21,7 +21,7 @@ from ..util import human, human_time
 from . import theme
 
 TIMEOUT = 30
-TYPE_NAMES = {"video": "Vidéo", "music": "Musique", "document": "Document", "archive": "Archive",
+TYPE_NAMES = {"video": "Vidéo", "music": "Musique", "document": "Document", "image": "Image", "archive": "Archive",
               "program": "Programme", "other": "Fichier"}
 
 
@@ -111,7 +111,8 @@ class AddDialog(QDialog):
         form.addRow(self.quality_label, self.quality_box)
         self.name_edit = QLineEdit(self.filename or "")
         form.addRow("Nom", self.name_edit)
-        form.addRow("Dossier", self._folder_row())
+        self.folder_label = QLabel("Dossier")
+        form.addRow(self.folder_label, self._folder_row())
         lay.addLayout(form)
         self.ffmpeg_label = QLabel("Installez ffmpeg pour les meilleures qualités")
         self.ffmpeg_label.setStyleSheet(f"color: {theme.colors()['muted']}; font-size: 11px;")
@@ -152,7 +153,8 @@ class AddDialog(QDialog):
         self.videos_box.addItems(list(QUALITIES))
         self.videos_box.setCurrentText(self.settings["quality"])
         form.addRow("Vidéos", self.videos_box)
-        form.addRow("Dossier", self._folder_row())
+        self.folder_label = QLabel("Dossier principal" if self.settings.get("sort_by_type", True) else "Dossier")
+        form.addRow(self.folder_label, self._folder_row())
         lay.addLayout(form)
         lay.addLayout(self._footer())
         self._update_count()
@@ -234,6 +236,7 @@ class AddDialog(QDialog):
             self.quality_box.setEnabled(True)
             self.ffmpeg_label.setVisible(bool(r.get("ffmpeg_missing")))
             self._show_thumbnail(r.get("thumbnail"))
+            self._update_folder()
         else:
             self.title_label.setText(r["name"] or self.urls[0])
             cat = category(r["name"])
@@ -243,6 +246,7 @@ class AddDialog(QDialog):
                     f"{self.settings['parts']} connexions" if r.get("resumable") else "1 connexion"]
             self.info_label.setText(" · ".join(p for p in info if p))
             self._hide_quality()
+            self._update_folder()
 
     def _hide_quality(self):
         self.quality_label.hide()
@@ -255,7 +259,27 @@ class AddDialog(QDialog):
         else:
             self.thumb.setPixmap(theme.type_icon("video").pixmap(40, 40))
 
+    def _category(self, r, choice=None):
+        """Catégorie de rangement d'un résultat d'analyse (None si inconnue)."""
+        if not r or r["kind"] == "error":
+            return None
+        if r["kind"] == "video":
+            return "music" if choice and choice["audio_only"] else "video"
+        return category(r["name"])
+
+    def _current_choice(self):
+        r = self.results[0]
+        i = self.quality_box.currentIndex()
+        return r["choices"][i] if r and r["kind"] == "video" and 0 <= i < len(r["choices"]) else None
+
+    def _update_folder(self):
+        """Dossier de la catégorie, tant que l'utilisateur n'a pas choisi le sien."""
+        cat = self._category(self.results[0], self._current_choice())
+        if cat and not self.folder_edit.isModified():
+            self.folder_edit.setText(store.folder_for(cat, self.settings))
+
     def _quality_changed(self, index):
+        self._update_folder()
         r = self.results[0]
         if not r or r["kind"] != "video" or self.name_edit.isModified() or index < 0:
             return
@@ -279,30 +303,35 @@ class AddDialog(QDialog):
             choice = r["choices"][self.quality_box.currentIndex()]
         name = self.name_edit.text().strip() or (r and r.get("name")) or self.filename
         audio_mp3 = bool(choice and choice["audio_only"] and choice["ext"] == "mp3")
+        auto = self._category(r, choice) is None and not self.folder_edit.isModified()
         return [{"url": self.urls[0], "kind": kind, "folder": self.folder_edit.text().strip() or self.settings["folder"],
+                 "auto_folder": auto,
                  "name": name, "fmt": choice["format"] if choice else None,
                  "quality": "Audio MP3" if audio_mp3 else ("Meilleure" if choice else self.settings["quality"]),
                  "headers": self.headers, "filename": self.filename}]
 
     def _collect_batch(self):
-        folder = self.folder_edit.text().strip() or self.settings["folder"]
+        main = self.folder_edit.text().strip() or self.settings["folder"]
+        mp3 = self.videos_box.currentText() == "Audio MP3"
         tasks = []
         for row in self._checked_rows():
             r = self.results[row]
             kind = r["kind"] if r and r["kind"] in ("video", "file") else self.kind
-            tasks.append({"url": self.urls[row], "kind": kind, "folder": folder,
+            cat = self._category(r, {"audio_only": True} if mp3 else None)
+            folder = store.folder_for(cat, {**self.settings, "folder": main}) if cat else main
+            tasks.append({"url": self.urls[row], "kind": kind, "folder": folder, "auto_folder": cat is None,
                           "name": (r and r.get("name")) or None, "fmt": None,
                           "quality": self.videos_box.currentText(), "headers": self.headers, "filename": None})
         return tasks
 
     def _finish(self, start):
         tasks = self.collect()
-        folder = os.path.expanduser(tasks[0]["folder"]) if tasks else ""
-        try:
-            os.makedirs(folder, exist_ok=True)
-        except OSError as e:
-            QMessageBox.warning(self, "PyDM", f"Dossier inutilisable : {folder}\n{e.strerror or e}")
-            return          # la fenêtre reste ouverte avec les choix de l'utilisateur
+        for folder in dict.fromkeys(os.path.expanduser(t["folder"]) for t in tasks):
+            try:
+                os.makedirs(folder, exist_ok=True)
+            except OSError as e:
+                QMessageBox.warning(self, "PyDM", f"Dossier inutilisable : {folder}\n{e.strerror or e}")
+                return      # la fenêtre reste ouverte avec les choix de l'utilisateur
         if self.never_box.isChecked():
             self.settings["confirm_add"] = False
             store.save_settings(self.settings)

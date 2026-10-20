@@ -293,10 +293,16 @@ class MainWindow(QMainWindow):
         opts = {**self.settings, **self.overrides}
         for url in urls:
             self._enqueue(url, os.path.expanduser(opts["folder"]), opts["parts"], opts["quality"],
-                          opts["browser"], headers, filename, kind)
+                          opts["browser"], headers, filename, kind, route=self._route(opts))
+
+    @staticmethod
+    def _route(opts, base=None):
+        """Catégorie → dossier de rangement (sous le dossier principal, ou `base`)."""
+        settings = {**opts, "folder": base or opts["folder"]}
+        return lambda cat: store.folder_for(cat, settings)
 
     def _enqueue(self, url, folder, parts, quality, browser, headers, filename, kind,
-                 fmt=None, stem=None, start=True):
+                 fmt=None, stem=None, start=True, route=None):
         placeholder = Download(url, folder, parts)
         placeholder.status = "Analyse…"
         self.model.add(placeholder)
@@ -304,7 +310,7 @@ class MainWindow(QMainWindow):
         def detect():   # réseau : hors du thread de l'interface
             try:
                 task = self.factory(url, folder, parts, quality, browser, headers, filename, kind,
-                                    fmt=fmt, stem=stem)
+                                    fmt=fmt, stem=stem, route=route)
             except Exception as e:  # noqa: BLE001
                 placeholder.error = str(e)
                 placeholder.status = f"Erreur : {e}"
@@ -349,8 +355,9 @@ class MainWindow(QMainWindow):
                 stem = os.path.splitext(unique_path(folder, e["name"]))[0] if e.get("name") else None
             elif e.get("name"):
                 filename = e["name"]
+            route = self._route(opts, folder) if e.get("auto_folder") else None    # type encore inconnu
             self._enqueue(e["url"], folder, opts["parts"], e["quality"], opts["browser"], e.get("headers"),
-                          filename, e["kind"], fmt=e.get("fmt"), stem=stem, start=start)
+                          filename, e["kind"], fmt=e.get("fmt"), stem=stem, start=start, route=route)
 
     def handle_message(self, msg):
         """Appelé par le thread IPC : on se contente de transmettre au thread de l'interface."""

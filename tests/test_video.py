@@ -142,6 +142,16 @@ class VideoCookiesTest(unittest.TestCase):
         self.assertTrue(calls[0]["opts"]["outtmpl"].endswith("100%% Hits %%(uploader)s.%(ext)s"))
 
 
+    def test_make_download_range_les_videos(self):
+        from pydm.engine import make_download
+        route = lambda cat: "/dl/" + cat  # noqa: E731
+        fake = types.SimpleNamespace(YoutubeDL=FakeYoutubeDL)
+        with mock.patch.dict(sys.modules, {"yt_dlp": fake}):
+            v = make_download("https://youtube.com/watch?v=1", "/dl", kind="video", route=route)
+            a = make_download("https://youtube.com/watch?v=1", "/dl", quality="Audio MP3", kind="video", route=route)
+        self.assertEqual((v.folder, a.folder), ("/dl/video", "/dl/music"))
+
+
 class AttemptsTest(unittest.TestCase):
     def test_ytdlp_attempts_sans_cookies(self):
         self.assertEqual(list(ytdlp_attempts("https://a.fr/v", {"User-Agent": "x"}, "Aucun")), [{}])

@@ -3,7 +3,7 @@ import unittest
 from tests.qt import HAS_QT, app
 
 NAMES = ("add", "resume", "pause", "force", "remove", "folder", "search", "schedule", "menu",
-         "type-video", "type-music", "type-document", "type-archive", "type-program", "type-other")
+         "type-video", "type-music", "type-document", "type-image", "type-archive", "type-program", "type-other")
 
 
 @unittest.skipUnless(HAS_QT, "PySide6 absent")

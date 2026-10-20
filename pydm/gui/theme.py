@@ -8,7 +8,7 @@ from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPalette, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 
 ICONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icons")
-TYPE_COLORS = {"video": "#a78bfa", "music": "#f472b6", "document": "#60a5fa",
+TYPE_COLORS = {"video": "#a78bfa", "music": "#f472b6", "document": "#60a5fa", "image": "#fb923c",
                "archive": "#fbbf24", "program": "#34d399", "other": "#94a3b8"}
 STATE_COLORS = {"done": "#22c55e", "paused": "#eab308", "error": "#ef4444"}
 SIZES = (16, 20, 24, 32, 48, 64, 128, 256)

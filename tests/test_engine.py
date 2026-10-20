@@ -76,6 +76,31 @@ class DownloadTest(unittest.TestCase):
             self.assertEqual(d.status, "Terminé")
             self.assertEqual(self.read(d), self.data)
 
+    def test_rangement_apres_la_sonde(self):
+        cd = "attachment; filename=rapport.pdf"
+        url = self.start_server(headers={"Content-Disposition": cd})
+        d = Download(url, self.dir, parts=2, route=lambda cat: os.path.join(self.dir, cat))
+        d.start()
+        wait(d)
+        self.assertEqual(d.path, os.path.join(self.dir, "document", "rapport.pdf"))
+        self.assertEqual(self.read(d), self.data)
+
+    def test_reprise_dans_le_dossier_d_origine(self):
+        url = self.start_server(delay=0.02)
+        d = Download(url, self.dir, parts=2, route=lambda cat: os.path.join(self.dir, "range"))
+        d.start()
+        end = time.time() + 20
+        while d.done <= 256 * 1024 and time.time() < end:
+            time.sleep(0.02)
+        d.pause()
+        d.wait()
+        folder = d.folder
+        d2 = Download(url, folder, 2, name=d.name, route=lambda cat: os.path.join(self.dir, "ailleurs"))
+        d2.start()
+        wait(d2, 60)
+        self.assertEqual(d2.folder, folder)
+        self.assertEqual(self.read(d2), self.data)
+
     def test_serveur_sans_plages(self):
         d = Download(self.start_server(ranges=False), self.dir, parts=4)
         d.start()

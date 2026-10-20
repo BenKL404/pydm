@@ -35,9 +35,9 @@ class Factory:
         self.calls = []
 
     def __call__(self, url, folder, parts=8, quality="Meilleure", browser="Aucun",
-                 headers=None, filename=None, kind="auto", fmt=None, stem=None):
+                 headers=None, filename=None, kind="auto", fmt=None, stem=None, route=None):
         self.calls.append({"url": url, "kind": kind, "quality": quality, "folder": folder, "parts": parts,
-                           "fmt": fmt, "stem": stem, "filename": filename})
+                           "fmt": fmt, "stem": stem, "filename": filename, "route": route})
         return FakeDownload(url, folder, parts)
 
 
@@ -285,9 +285,10 @@ class TrayTest(WindowCase):
         self.assertEqual(len(w.tray.messages), 1)
 
 
-def entry(url="https://a.fr/x.iso", kind="file", name="x.iso", folder=None, fmt=None, quality="Meilleure"):
+def entry(url="https://a.fr/x.iso", kind="file", name="x.iso", folder=None, fmt=None, quality="Meilleure",
+          auto_folder=False):
     return {"url": url, "kind": kind, "folder": folder, "name": name, "fmt": fmt, "quality": quality,
-            "headers": None, "filename": None}
+            "headers": None, "filename": None, "auto_folder": auto_folder}
 
 
 @unittest.skipUnless(HAS_QT, "PySide6 absent")
@@ -371,6 +372,36 @@ class AddFlowFixesTest(AddFlowTest):
         w.tick()
         self.assertEqual(len(w.dialogs), 1)
         self.assertFalse(w.isVisible())
+
+
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class SortWindowTest(AddFlowTest):
+    def test_direct_avec_rangement(self):
+        w = WindowCase.window(self)        # confirm_add faux : téléchargement direct
+        w.add_urls(["https://a.fr/doc"])
+        self.assertTrue(self.tick_until(w, lambda: self.factory.calls))
+        route = self.factory.calls[0]["route"]
+        self.assertEqual(route("document"), os.path.join(self.cfg, "Documents"))
+        self.assertEqual(route("other"), self.cfg)
+
+    def test_direct_sans_rangement(self):
+        self.settings["sort_by_type"] = False
+        w = WindowCase.window(self)
+        w.add_urls(["https://a.fr/doc"])
+        self.assertTrue(self.tick_until(w, lambda: self.factory.calls))
+        self.assertEqual(self.factory.calls[0]["route"]("document"), self.cfg)
+
+    def test_dialogue_dossier_auto(self):
+        w = self.window()
+        w.add_urls(["https://a.fr/x"])
+        self.accept(w, [entry(folder=self.cfg, auto_folder=True), ])
+        self.assertEqual(self.factory.calls[0]["route"]("image"), os.path.join(self.cfg, "Images"))
+
+    def test_dialogue_dossier_choisi(self):
+        w = self.window()
+        w.add_urls(["https://a.fr/x"])
+        self.accept(w, [entry(folder=self.cfg)])
+        self.assertIsNone(self.factory.calls[0]["route"])
 
 
 if __name__ == "__main__":

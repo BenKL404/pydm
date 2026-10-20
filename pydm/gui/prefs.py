@@ -6,9 +6,12 @@ import os
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
                                QHBoxLayout, QLineEdit, QSpinBox, QToolButton, QWidget)
 
+from .. import store
 from . import theme
 
 THEMES = (("system", "Système"), ("light", "Clair"), ("dark", "Sombre"))
+CATEGORY_LABELS = (("video", "Vidéos"), ("music", "Musique"), ("document", "Documents"), ("image", "Images"),
+                   ("archive", "Archives"), ("program", "Programmes"))
 AUTOSTART = """[Desktop Entry]
 Type=Application
 Name=PyDM
@@ -53,6 +56,19 @@ class PreferencesDialog(QDialog):
         h.addWidget(self.folder_edit, 1)
         h.addWidget(browse)
         form.addRow("Dossier de téléchargement", row)
+
+        self.sort_box = QCheckBox("Ranger par type de fichier (sous-dossiers du dossier de téléchargement)")
+        self.sort_box.setChecked(settings["sort_by_type"])
+        form.addRow("", self.sort_box)
+        self.dir_edits = {}
+        dirs = settings.get("category_dirs") or {}
+        for key, label in CATEGORY_LABELS:
+            edit = QLineEdit(dirs.get(key) or store.DEFAULTS["category_dirs"][key])
+            edit.setToolTip("Nom d'un sous-dossier, ou chemin complet (ex. /media/disque/Films)")
+            edit.setEnabled(self.sort_box.isChecked())
+            self.sort_box.toggled.connect(edit.setEnabled)
+            self.dir_edits[key] = edit
+            form.addRow(f"    {label}", edit)
 
         self.parts_spin = QSpinBox()
         self.parts_spin.setRange(1, 32)
@@ -104,5 +120,8 @@ class PreferencesDialog(QDialog):
             else self.settings["close_to_tray"],
             autostart=self.autostart_box.isChecked(),
             confirm_add=self.confirm_box.isChecked(),
+            sort_by_type=self.sort_box.isChecked(),
+            category_dirs={k: e.text().strip() or store.DEFAULTS["category_dirs"][k]
+                           for k, e in self.dir_edits.items()},
         )
         return result
