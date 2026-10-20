@@ -25,6 +25,7 @@ DEFAULTS = {
     "close_to_tray": True,
     "autostart": False,
     "tray_hint_shown": False,
+    "confirm_add": True,
     "window": {},
 }
 CHOICES = {"theme": ("system", "light", "dark"), "quality": tuple(QUALITIES), "browser": BROWSERS}

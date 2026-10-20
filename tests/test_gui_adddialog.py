@@ -1,0 +1,160 @@
+import tempfile
+import threading
+import time
+import unittest
+from unittest import mock
+
+from tests.qt import HAS_QT, app
+
+
+def choice(label, fmt, ext, height=None, audio=False):
+    return dict(label=label, format=fmt, ext=ext, size=None, approx=False, height=height, audio_only=audio)
+
+
+CHOICES = [choice("1080p · MP4 · 392.9 Mo", "137+140", "mp4", 1080),
+           choice("720p · MP4", "136+140", "mp4", 720),
+           choice("Audio seul · MP3", "ba/b", "mp3", audio=True)]
+
+
+def result(**kw):
+    r = dict(kind="video", name="Conférence.mp4", size=None, resumable=True, site="youtube.com",
+             title="Conférence", duration=2538, thumbnail=None, choices=CHOICES, selected=1,
+             ffmpeg_missing=False, error=None, drm=False)
+    r.update(kw)
+    return r
+
+
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class AddDialogTest(unittest.TestCase):
+    def setUp(self):
+        app()
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.cfg = tmp.name
+        for name in ("CONFIG_DIR", "SOCKET_PATH"):
+            p = mock.patch(f"pydm.ipc.{name}", f"{self.cfg}/x" if name == "SOCKET_PATH" else self.cfg)
+            p.start()
+            self.addCleanup(p.stop)
+        from pydm import store
+        from pydm.gui.adddialog import AddDialog
+        self.store, self.AddDialog = store, AddDialog
+        self.settings = dict(store.DEFAULTS, folder=self.cfg)
+        self.emitted = []
+
+    def dialog(self, res=None, urls=("https://www.youtube.com/watch?v=x",), analyzer=None):
+        dlg = self.AddDialog(self.settings, list(urls), analyzer=analyzer or (lambda *a, **k: res))
+        dlg.accepted_tasks.connect(lambda tasks, start: self.emitted.append((tasks, start)))
+        self.addCleanup(dlg.deleteLater)
+        dlg.show()
+        return dlg
+
+    def wait_filled(self, dlg, timeout=2.0):
+        end = time.time() + timeout
+        while time.time() < end:
+            dlg.poll()
+            if dlg.done_count() == len(dlg.urls):
+                return
+            time.sleep(0.01)
+        self.fail("analyse non reçue")
+
+    def test_video_remplie(self):
+        dlg = self.dialog(result())
+        self.wait_filled(dlg)
+        self.assertEqual(dlg.quality_box.count(), 3)
+        self.assertEqual(dlg.quality_box.currentIndex(), 1)
+        self.assertEqual(dlg.name_edit.text(), "Conférence.mp4")
+        self.assertIn("youtube.com", dlg.info_label.text())
+        self.assertEqual(dlg.windowTitle(), "Ajouter une vidéo")
+
+    def test_telecharger(self):
+        dlg = self.dialog(result())
+        self.wait_filled(dlg)
+        dlg.quality_box.setCurrentIndex(0)
+        dlg.download_btn.click()
+        self.assertEqual(len(self.emitted), 1)
+        tasks, start = self.emitted[0]
+        self.assertIs(start, True)
+        self.assertEqual((tasks[0]["fmt"], tasks[0]["kind"], tasks[0]["folder"]), ("137+140", "video", self.cfg))
+
+    def test_plus_tard(self):
+        dlg = self.dialog(result())
+        self.wait_filled(dlg)
+        dlg.later_btn.click()
+        self.assertIs(self.emitted[0][1], False)
+
+    def test_annuler(self):
+        dlg = self.dialog(result())
+        self.wait_filled(dlg)
+        dlg.reject()
+        self.assertEqual(self.emitted, [])
+
+    def test_extension_suit_la_qualite(self):
+        dlg = self.dialog(result())
+        self.wait_filled(dlg)
+        dlg.quality_box.setCurrentIndex(2)
+        self.assertTrue(dlg.name_edit.text().endswith(".mp3"))
+        self.assertEqual(self.dialog_task(dlg)["quality"], "Audio MP3")
+        dlg.name_edit.setText("perso.mp4")
+        dlg.name_edit.setModified(True)
+        dlg.quality_box.setCurrentIndex(0)
+        self.assertEqual(dlg.name_edit.text(), "perso.mp4")
+
+    def dialog_task(self, dlg):
+        return dlg.collect()[0]
+
+    def test_nom_vide(self):
+        dlg = self.dialog(result())
+        self.wait_filled(dlg)
+        dlg.name_edit.setText("   ")
+        dlg.download_btn.click()
+        self.assertEqual(self.emitted[0][0][0]["name"], "Conférence.mp4")
+
+    def test_ne_plus_demander(self):
+        dlg = self.dialog(result())
+        self.wait_filled(dlg)
+        dlg.never_box.setChecked(True)
+        dlg.download_btn.click()
+        self.assertIs(self.settings["confirm_add"], False)
+        self.assertIs(self.store.load_settings(self.cfg)["confirm_add"], False)
+
+    def test_erreur(self):
+        dlg = self.dialog(result(kind="error", error="HTTP Error 403: Forbidden", choices=[], name=None))
+        self.wait_filled(dlg)
+        self.assertIn("403", dlg.info_label.text())
+        self.assertEqual(dlg.download_btn.text(), "Télécharger quand même")
+        dlg.download_btn.click()
+        self.assertIsNone(self.emitted[0][0][0]["fmt"])
+        self.assertEqual(self.emitted[0][0][0]["kind"], "auto")
+
+    def test_drm(self):
+        dlg = self.dialog(result(kind="error", error="contenu protégé", drm=True, choices=[]))
+        self.wait_filled(dlg)
+        self.assertFalse(dlg.download_btn.isEnabled())
+
+    def test_resultat_apres_fermeture(self):
+        gate = threading.Event()
+
+        def slow(*a, **k):
+            gate.wait(2)
+            return result()
+        dlg = self.dialog(analyzer=slow)
+        dlg.reject()
+        gate.set()
+        time.sleep(0.1)
+        dlg.poll()
+        self.assertEqual(self.emitted, [])
+
+    def test_fichier(self):
+        dlg = self.dialog(result(kind="file", name="blender.tar.xz", size=389 * 2 ** 20, choices=[],
+                                 site="download.blender.org"), urls=["https://download.blender.org/b.tar.xz"])
+        self.wait_filled(dlg)
+        self.assertFalse(dlg.quality_box.isVisible())
+        self.assertEqual(dlg.windowTitle(), "Ajouter un téléchargement")
+        self.assertIn("reprise possible", dlg.info_label.text())
+        dlg.download_btn.click()
+        self.assertEqual(self.emitted[0][0][0]["kind"], "file")
+        self.assertEqual(self.emitted[0][0][0]["name"], "blender.tar.xz")
+
+
+if __name__ == "__main__":
+    unittest.main()
