@@ -177,13 +177,15 @@ class VideoCookiesTest(unittest.TestCase):
 
     def test_fichiers_intermediaires(self):
         with tempfile.TemporaryDirectory() as tmp:
-            names = ["Clip.mp4", "Clip.f137.mp4.part", "Clip.f140.m4a", "Clip.mp4.ytdl", "Autre.mp4"]
+            names = ["Clip.mp4", "Clip.f137.mp4.part", "Clip.f140.m4a", "Clip.mp4.ytdl", "Autre.mp4",
+                     "Clip.mkv", "Clip.srt", "Clip.pdf"]          # fichiers de l'utilisateur au même nom
             for n in names:
                 open(os.path.join(tmp, n), "w").close()
             d = VideoDownload("https://vimeo.com/1", tmp, name="Clip.mp4")
             self.assertEqual(sorted(os.path.basename(f) for f in d.files()), sorted(names[:4]))
             pending = VideoDownload("https://vimeo.com/1", tmp, stem="Clip")
-            self.assertEqual(len(pending.files()), 4)
+            self.assertEqual(sorted(os.path.basename(f) for f in pending.files()),
+                             ["Clip.f137.mp4.part", "Clip.f140.m4a", "Clip.mp4.ytdl"])
 
 
 class AttemptsTest(unittest.TestCase):

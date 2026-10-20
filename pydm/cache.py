@@ -10,6 +10,8 @@ from collections import OrderedDict
 
 from .analyze import analyze, preselect
 
+QUEUE_MAX = 4      # analyses anticipées en attente au plus
+WAIT_MAX = 20      # attente d'une analyse en cours (sous le délai de 30 s de la fenêtre d'ajout)
 _YT = re.compile(r"(?:^|\.)(youtube\.com|youtu\.be)$", re.I)
 
 
@@ -20,7 +22,7 @@ def video_key(url):
     if _YT.search(host):
         if host.endswith("youtu.be") and u.path.strip("/"):
             return "youtube:" + u.path.strip("/").split("/")[0]
-        m = re.match(r"/shorts/([^/?#]+)", u.path)
+        m = re.match(r"/(?:shorts|live|embed)/([^/?#]+)", u.path)
         if m:
             return "youtube:" + m.group(1)
         v = urllib.parse.parse_qs(u.query).get("v")
@@ -34,8 +36,9 @@ class AnalysisCache:
         self.analyzer, self.ttl, self.max_items, self.clock = analyzer, ttl, max_items, clock
         self._lock = threading.Lock()
         self._items = OrderedDict()             # clé → (heure, résultat)
-        self._pending = {}                      # clé → Event de l'analyse en cours
-        self._slots = threading.Semaphore(workers)
+        self._pending = {}                      # clé → tâche en attente ou en cours
+        self._queue = []                        # tâches en attente, de la plus ancienne à la plus récente
+        self.workers, self._active = workers, 0
 
     def _fresh(self, key):
         item = self._items.get(key)
@@ -56,32 +59,54 @@ class AnalysisCache:
             return self._fresh(video_key(url)) is not None
 
     def prefetch(self, url, headers=None, browser="Aucun", kind="video"):
-        """Analyse en arrière-plan, sauf si elle est déjà faite ou en cours."""
+        """Analyse en arrière-plan, sauf si elle est déjà faite, en cours ou en attente."""
         key = video_key(url)
         with self._lock:
             if self._fresh(key) is not None or key in self._pending:
                 return
-            done = self._pending[key] = threading.Event()
+            job = {"key": key, "args": (url, headers, browser, kind), "started": False,
+                   "done": threading.Event()}
+            self._pending[key] = job
+            self._queue.append(job)
+            while len(self._queue) > QUEUE_MAX:     # pages quittées depuis : on les oublie
+                self._drop(self._queue.pop(0))
+            if self._active < self.workers:
+                self._active += 1
+                threading.Thread(target=self._work, daemon=True).start()
 
-        def run():
-            with self._slots:
-                try:
-                    result = self.analyzer(url, headers, browser, kind, "Meilleure")
-                except Exception as e:  # noqa: BLE001
-                    result = {"kind": "error", "error": str(e)}
+    def _drop(self, job):
+        self._pending.pop(job["key"], None)
+        job["done"].set()
+
+    def _work(self):
+        while True:
             with self._lock:
-                self._store(key, result)
-                self._pending.pop(key, None)
-            done.set()
-        threading.Thread(target=run, daemon=True).start()
+                if not self._queue:
+                    self._active -= 1
+                    return
+                job = self._queue.pop()             # la page ouverte en dernier d'abord
+                job["started"] = True
+            try:
+                result = self.analyzer(*job["args"], "Meilleure")
+            except Exception as e:  # noqa: BLE001
+                result = {"kind": "error", "error": str(e)}
+            with self._lock:
+                self._store(job["key"], result)
+                if self._pending.get(job["key"]) is job:
+                    del self._pending[job["key"]]
+            job["done"].set()
 
     def get(self, url, headers=None, browser="Aucun", kind="auto", default_quality="Meilleure"):
-        """Comme analyze() : résultat en mémoire, ou attente de l'analyse en cours, ou analyse."""
+        """Comme analyze() : résultat en mémoire, ou analyse en cours attendue, ou analyse immédiate."""
         key = video_key(url)
         with self._lock:
-            result, pending = self._fresh(key), self._pending.get(key)
-        if result is None and pending:
-            pending.wait(60)
+            result, job = self._fresh(key), self._pending.get(key)
+            if result is None and job and not job["started"]:     # en attente : le clic la reprend
+                self._queue.remove(job)
+                self._drop(job)
+                job = None
+        if result is None and job:
+            job["done"].wait(WAIT_MAX)
             with self._lock:
                 result = self._fresh(key)
         if result is None:

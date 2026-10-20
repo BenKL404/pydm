@@ -127,5 +127,32 @@ class CacheTest(unittest.TestCase):
         self.assertEqual(an.max_active, 2)
 
 
+class SlowAnalyzer(FakeAnalyzer):
+    def __call__(self, *a, **k):
+        r = super().__call__(*a, **k)
+        time.sleep(1.0)
+        return r
+
+
+class SchedulingTest(unittest.TestCase):
+    def test_clic_pas_derriere_les_vieilles_analyses(self):
+        c = AnalysisCache(SlowAnalyzer())
+        for i in range(10):
+            c.prefetch(f"https://www.youtube.com/watch?v=vid{i}")
+        t = time.time()
+        r = c.get("https://www.youtube.com/watch?v=vid9")
+        self.assertLess(time.time() - t, 1.6)
+        self.assertEqual(r["kind"], "video")
+
+    def test_file_bornee(self):
+        an = SlowAnalyzer()
+        c = AnalysisCache(an)
+        for i in range(10):
+            c.prefetch(f"https://vimeo.com/{i}")
+        time.sleep(4.5)
+        self.assertLessEqual(len(an.calls), 6)          # 2 en cours + 4 en attente au plus
+        self.assertTrue(c.ready("https://vimeo.com/9"))  # les plus récentes d'abord
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -693,6 +693,7 @@ class PrefetchTest(WindowCase):
         return WindowCase.window(self, analyzer=self.analyzer)
 
     def test_prefetch_sans_fenetre(self):
+        self.settings["confirm_add"] = True     # sans fenêtre d'ajout, pas d'analyse anticipée
         w = self.window()
         w.hide()
         w.handle_message({"action": "prefetch", "url": self.URL})
@@ -726,6 +727,16 @@ class PrefetchTest(WindowCase):
         w.handle_message({"action": "add", "url": self.URL, "kind": "video", "title": "Ma vidéo"})
         w.tick()
         self.assertEqual(w.dialogs[0].title_label.text(), "Ma vidéo")
+
+
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class PrefetchDirectTest(PrefetchTest):
+    def test_pas_de_prefetch_sans_fenetre_d_ajout(self):
+        w = self.window()                       # confirm_add faux : le résultat ne servirait pas
+        w.handle_message({"action": "prefetch", "url": self.URL})
+        w.tick()
+        time.sleep(0.2)
+        self.assertEqual(self.analyzer.calls, [])
 
 
 if __name__ == "__main__":

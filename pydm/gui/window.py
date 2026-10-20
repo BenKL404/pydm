@@ -526,7 +526,8 @@ class MainWindow(QMainWindow):
         while not self.inbox.empty():
             msg = self.inbox.get()
             if msg.get("action") == "prefetch" and msg.get("url"):
-                self.cache.prefetch(msg["url"], msg.get("headers"), self.settings["browser"])
+                if self.settings["confirm_add"]:    # sinon le résultat ne servirait pas
+                    self.cache.prefetch(msg["url"], msg.get("headers"), self.settings["browser"])
                 continue            # préparation silencieuse : ni fenêtre ni premier plan
             if msg.get("action") == "add" and msg.get("url"):
                 self.add_urls([msg["url"]], msg.get("headers"), msg.get("filename"), msg.get("kind", "auto"),

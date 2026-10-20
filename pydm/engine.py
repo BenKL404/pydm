@@ -358,12 +358,16 @@ class VideoDownload(_Task):
     def files(self):
         """Fichier final et fichiers intermédiaires de yt-dlp (.fNNN, .part, .ytdl…)."""
         if self.name:
-            base = os.path.splitext(self.path)[0]
+            base, own = os.path.splitext(self.path)[0], [self.path, self.path + ".part", self.path + ".ytdl"]
         elif self.stem and self.stem.strip():
-            base = os.path.join(self.folder, self.stem.replace("/", "_").strip())
+            base, own = os.path.join(self.folder, self.stem.replace("/", "_").strip()), []
         else:
             return []
-        return sorted(p for p in glob.glob(glob.escape(base) + ".*") if os.path.isfile(p))
+        b = glob.escape(base)
+        found = set(own)
+        for pattern in (".f[0-9]*", ".*.part", ".*.ytdl", ".temp.*", ".*.part-Frag*"):
+            found.update(glob.glob(b + pattern))
+        return sorted(p for p in found if os.path.isfile(p))
 
     def _hook(self, d):
         if self.stop_evt.is_set():

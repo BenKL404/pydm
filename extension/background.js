@@ -118,19 +118,33 @@ api.tabs.onRemoved.addListener((tabId) => {
 // --- 2 bis. Analyse anticipée : PyDM prépare la vidéo dès l'ouverture de la page ----
 const prefetched = new Map();   // onglet → dernière URL envoyée
 
+// Pages qui montrent une vidéo précise (pas l'accueil, un profil, une liste…).
+const VIDEO_PATHS = [
+  [/(^|\.)youtube\.com$/i, (u) => (u.pathname === "/watch" && u.searchParams.has("v")) || /^\/(shorts|live)\/[^/]+/.test(u.pathname)],
+  [/(^|\.)youtu\.be$/i, (u) => u.pathname.length > 1],
+  [/(^|\.)vimeo\.com$/i, (u) => /^\/\d+/.test(u.pathname)],
+  [/(^|\.)dailymotion\.com$/i, (u) => u.pathname.startsWith("/video/")],
+  [/(^|\.)dai\.ly$/i, (u) => u.pathname.length > 1],
+  [/(^|\.)reddit\.com$/i, (u) => u.pathname.includes("/comments/")],
+  [/(^|\.)(x|twitter)\.com$/i, (u) => u.pathname.includes("/status/")],
+  [/(^|\.)instagram\.com$/i, (u) => /^\/(p|reel|reels|tv)\//.test(u.pathname)],
+  [/(^|\.)facebook\.com$/i, (u) => /^\/(watch|reel)|\/videos\//.test(u.pathname)],
+  [/(^|\.)fb\.watch$/i, (u) => u.pathname.length > 1],
+  [/(^|\.)tiktok\.com$/i, (u) => u.pathname.includes("/video/")],
+  [/(^|\.)twitch\.tv$/i, (u) => /^\/videos\/\d+/.test(u.pathname) || u.pathname.includes("/clip/")],
+];
+
 function isVideoPage(url) {
   let u;
   try { u = new URL(url); } catch { return false; }
-  const host = u.hostname;
-  if (/(^|\.)youtube\.com$/i.test(host)) return (u.pathname === "/watch" && u.searchParams.has("v")) || u.pathname.startsWith("/shorts/");
-  if (/(^|\.)youtu\.be$/i.test(host)) return u.pathname.length > 1;
-  return VIDEO_HOSTS.test(host) && u.pathname.length > 1;
+  const rule = VIDEO_PATHS.find(([host]) => host.test(u.hostname));
+  return rule ? rule[1](u) : false;
 }
 
 async function prefetch(tabId, url) {
   if (!url || !isVideoPage(url) || prefetched.get(tabId) === url) return;
-  if (!(await settings()).prefetch) return;
   prefetched.set(tabId, url);
+  if (!(await settings()).prefetch) return;
   try {
     await api.runtime.sendNativeMessage(HOST, { action: "prefetch", url, headers: await headersFor(url, url) });
   } catch {}      // PyDM fermé ou absent : rien à faire
