@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFrame, QHBoxLayout
 
 from .. import __version__, ipc, store
 from ..analyze import analyze
-from ..util import human
+from ..util import human, unique_path
 from ..engine import BROWSERS, QUALITIES, Download, entry_from_task, make_download, task_from_entry
 from . import theme
 from .adddialog import AddDialog
@@ -345,8 +345,8 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "PyDM", f"Dossier inutilisable : {folder}\n{err.strerror}")
                 return
             stem, filename = None, e.get("filename")
-            if e["kind"] == "video":
-                stem = os.path.splitext(e["name"])[0] if e.get("name") else None
+            if e["kind"] == "video":       # même titre déjà présent : « titre (1) »
+                stem = os.path.splitext(unique_path(folder, e["name"]))[0] if e.get("name") else None
             elif e.get("name"):
                 filename = e["name"]
             self._enqueue(e["url"], folder, opts["parts"], e["quality"], opts["browser"], e.get("headers"),
@@ -370,6 +370,8 @@ class MainWindow(QMainWindow):
             msg = self.inbox.get()
             if msg.get("action") == "add" and msg.get("url"):
                 self.add_urls([msg["url"]], msg.get("headers"), msg.get("filename"), msg.get("kind", "auto"))
+                if self.settings["confirm_add"]:
+                    continue        # la fenêtre d'ajout passe devant ; la principale reste où elle est
             self.show_window()
         while not self.detected.empty():
             placeholder, task, start = self.detected.get()

@@ -51,12 +51,28 @@ def _tbr(f):
     return f.get("tbr") or 0
 
 
+def _is_hls(f):
+    return str(f.get("protocol") or "").startswith("m3u8")
+
+
+def _direct(fs):
+    """Flux téléchargés d'un bloc (DASH/https) si possible : taille exacte, pas de fragments HLS."""
+    return [f for f in fs if not _is_hls(f)] or fs
+
+
+def _audio_key(f):
+    """Langue d'origine d'abord (YouTube ajoute des pistes doublées), puis débit."""
+    pref = f.get("language_preference")
+    return (pref if pref is not None else 0, _tbr(f))
+
+
 def _best_video(fs):
-    """Meilleur débit, mais un flux MP4/H.264 (lu partout) l'emporte s'il atteint 90 % du meilleur."""
+    """Meilleur débit, mais un flux H.264 (lu partout) l'emporte s'il atteint 90 % du meilleur."""
+    fs = _direct(fs)
     best = max(fs, key=_tbr)
-    mp4 = [f for f in fs if f.get("ext") == "mp4" or str(f.get("vcodec", "")).startswith("avc1")]
-    if mp4:
-        m = max(mp4, key=_tbr)
+    h264 = [f for f in fs if str(f.get("vcodec") or "").startswith("avc1")]
+    if h264:
+        m = max(h264, key=_tbr)
         if _tbr(m) >= 0.9 * _tbr(best):
             return m
     return best
@@ -79,7 +95,7 @@ def build_choices(info, ffmpeg):
     duration = info.get("duration")
     formats = [f for f in info.get("formats") or [] if f.get("ext") != "mhtml"]
     videos = [f for f in formats if _is_video(f)]
-    audios = [f for f in formats if _is_audio_only(f)]
+    audios = _direct([f for f in formats if _is_audio_only(f)])
     usable = videos if ffmpeg else [f for f in videos if _has_audio(f)]
     heights = sorted({f["height"] for f in usable}, reverse=True)
     choices = []
@@ -89,7 +105,7 @@ def build_choices(info, ffmpeg):
         fmt, ext = v["format_id"], v.get("ext") or "mp4"
         if not _has_audio(v) and audios:
             m4a = [a for a in audios if a.get("ext") == "m4a"]
-            a = max(m4a if (m4a and ext == "mp4") else audios, key=_tbr)
+            a = max(m4a if (m4a and ext == "mp4") else audios, key=_audio_key)
             asize, aapprox = _size(a, duration)
             fmt = f"{v['format_id']}+{a['format_id']}"
             size = size + asize if size and asize else None
@@ -100,7 +116,7 @@ def build_choices(info, ffmpeg):
     if ffmpeg and (choices or audios):
         choices.append(_choice(f"Audio seul{SEP}MP3", "ba/b", "mp3", audio_only=True))
     elif not ffmpeg and audios:
-        a = max(audios, key=_tbr)
+        a = max(audios, key=_audio_key)
         size, approx = _size(a, duration)
         ext = a.get("ext") or "m4a"
         choices.append(_choice(_label("Audio seul", ext, size, approx), a["format_id"], ext, size, approx,

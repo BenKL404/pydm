@@ -379,9 +379,10 @@ class VideoDownload(_Task):
         if not ffmpeg and not audio and not self.fmt:
             h = re.search(r"height<=(\d+)", fmt)   # sans ffmpeg : flux déjà fusionné uniquement
             fmt = f"b[height<={h.group(1)}]/b" if h else "b"
-        stem = (self.stem or "").replace("/", "_").strip()
+        stem = (self.stem or "").replace("/", "_").strip().encode()[:150].decode(errors="ignore").strip()
         opts = {
-            "outtmpl": os.path.join(self.folder, (stem or "%(title).150B [%(id)s]") + ".%(ext)s"),
+            "outtmpl": os.path.join(self.folder, (stem.replace("%", "%%") or "%(title).150B [%(id)s]")
+                                    + ".%(ext)s"),
             "format": fmt,
             "progress_hooks": [self._hook],
             "concurrent_fragment_downloads": self.parts,

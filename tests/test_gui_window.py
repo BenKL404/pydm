@@ -355,5 +355,23 @@ class AddFlowTest(WindowCase):
         self.assertEqual((self.factory.calls[0]["filename"], self.factory.calls[0]["stem"]), ("renommé.iso", None))
 
 
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class AddFlowFixesTest(AddFlowTest):
+    def test_meme_nom_rendu_unique(self):
+        open(os.path.join(self.cfg, "Ma vidéo.mp4"), "w").close()
+        w = self.window()
+        w.add_urls(["https://a.fr/v"])
+        self.accept(w, [entry("https://a.fr/v", "video", "Ma vidéo.mp4", self.cfg)])
+        self.assertEqual(self.factory.calls[0]["stem"], "Ma vidéo (1)")
+
+    def test_fenetre_principale_reste_cachee(self):
+        w = self.window()
+        w.hide()
+        w.handle_message({"action": "add", "url": "https://a.fr/1.zip"})
+        w.tick()
+        self.assertEqual(len(w.dialogs), 1)
+        self.assertFalse(w.isVisible())
+
+
 if __name__ == "__main__":
     unittest.main()

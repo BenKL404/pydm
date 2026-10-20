@@ -131,6 +131,17 @@ class VideoCookiesTest(unittest.TestCase):
         self.assertTrue(calls[0]["opts"]["outtmpl"].endswith("%(title).150B [%(id)s].%(ext)s"))
 
 
+    def test_nom_long_tronque(self):
+        d, calls = self.run_video("https://vimeo.com/1", {}, stem="漢" * 120)
+        base = os.path.basename(calls[0]["opts"]["outtmpl"])[:-len(".%(ext)s")]
+        self.assertLessEqual(len(base.encode()), 150)
+        self.assertTrue(base.startswith("漢"))
+
+    def test_pourcent_echappe(self):
+        _, calls = self.run_video("https://vimeo.com/1", {}, stem="100% Hits %(uploader)s")
+        self.assertTrue(calls[0]["opts"]["outtmpl"].endswith("100%% Hits %%(uploader)s.%(ext)s"))
+
+
 class AttemptsTest(unittest.TestCase):
     def test_ytdlp_attempts_sans_cookies(self):
         self.assertEqual(list(ytdlp_attempts("https://a.fr/v", {"User-Agent": "x"}, "Aucun")), [{}])

@@ -213,5 +213,30 @@ class BatchTest(DialogCase):
         self.assertFalse(dlg.download_btn.isEnabled())
 
 
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class AddDialogFixesTest(DialogCase):
+    def test_video_choisie_malgre_defaut_mp3(self):
+        self.settings["quality"] = "Audio MP3"
+        dlg = self.dialog(result())
+        self.wait_filled(dlg)
+        dlg.quality_box.setCurrentIndex(1)
+        task = dlg.collect()[0]
+        self.assertEqual(task["fmt"], "136+140")
+        self.assertNotEqual(task["quality"], "Audio MP3")
+
+    def test_dossier_inutilisable_garde_la_fenetre(self):
+        from PySide6.QtWidgets import QMessageBox
+        dlg = self.dialog(result())
+        self.wait_filled(dlg)
+        dlg.folder_edit.setText("/proc/pydm-impossible")
+        dlg.never_box.setChecked(True)
+        with mock.patch.object(QMessageBox, "warning") as warn:
+            dlg.download_btn.click()
+        self.assertTrue(warn.called)
+        self.assertEqual(self.emitted, [])
+        self.assertTrue(dlg.isVisible())
+        self.assertIs(self.settings["confirm_add"], True)
+
+
 if __name__ == "__main__":
     unittest.main()

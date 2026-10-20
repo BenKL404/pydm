@@ -9,7 +9,8 @@ import time
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout,
-                               QHBoxLayout, QHeaderView, QLabel, QLineEdit, QPushButton, QTableWidget,
+                               QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMessageBox, QPushButton,
+                               QTableWidget,
                                QTableWidgetItem, QToolButton, QVBoxLayout, QWidget)
 
 from .. import store
@@ -280,7 +281,7 @@ class AddDialog(QDialog):
         audio_mp3 = bool(choice and choice["audio_only"] and choice["ext"] == "mp3")
         return [{"url": self.urls[0], "kind": kind, "folder": self.folder_edit.text().strip() or self.settings["folder"],
                  "name": name, "fmt": choice["format"] if choice else None,
-                 "quality": "Audio MP3" if audio_mp3 else self.settings["quality"],
+                 "quality": "Audio MP3" if audio_mp3 else ("Meilleure" if choice else self.settings["quality"]),
                  "headers": self.headers, "filename": self.filename}]
 
     def _collect_batch(self):
@@ -296,6 +297,12 @@ class AddDialog(QDialog):
 
     def _finish(self, start):
         tasks = self.collect()
+        folder = os.path.expanduser(tasks[0]["folder"]) if tasks else ""
+        try:
+            os.makedirs(folder, exist_ok=True)
+        except OSError as e:
+            QMessageBox.warning(self, "PyDM", f"Dossier inutilisable : {folder}\n{e.strerror or e}")
+            return          # la fenêtre reste ouverte avec les choix de l'utilisateur
         if self.never_box.isChecked():
             self.settings["confirm_add"] = False
             store.save_settings(self.settings)

@@ -136,5 +136,41 @@ class AnalyzeTest(unittest.TestCase):
         self.assertTrue(r["error"])
 
 
+class RealWorldChoicesTest(unittest.TestCase):
+    def test_audio_langue_originale(self):
+        info = {"duration": 100, "formats": [
+            fmt("137", "mp4", "avc1", "none", 1080, 4000, filesize=10),
+            fmt("140-8", "m4a", "none", "mp4a", tbr=130, filesize=1, language="es", language_preference=-1),
+            fmt("140-23", "m4a", "none", "mp4a", tbr=129, filesize=1, language="en", language_preference=10)]}
+        for ffmpeg in (True, False):
+            choices, _ = build_choices(dict(info, formats=info["formats"] + [
+                fmt("18", "mp4", "avc1", "mp4a", 360, 500, filesize=5)]), ffmpeg=ffmpeg)
+            audio_rows = [c for c in choices if c["audio_only"]]
+            if ffmpeg:
+                self.assertEqual(choices[0]["format"], "137+140-23")
+            else:
+                self.assertEqual(audio_rows[0]["format"], "140-23")
+
+    def test_dash_prefere_a_hls(self):
+        info = {"duration": 240, "formats": [
+            fmt("270", "mp4", "avc1.640028", "none", 1080, 5000, protocol="m3u8_native"),
+            fmt("137", "mp4", "avc1.640028", "none", 1080, 3300, protocol="https", filesize=99_700_000),
+            fmt("603", "mp4", "vp09.00.11.08", "none", 144, 990, protocol="m3u8_native"),
+            fmt("160", "mp4", "avc1.4d400c", "none", 144, 110, protocol="https", filesize=2_000_000),
+            fmt("140", "m4a", "none", "mp4a.40.2", tbr=129, protocol="https", filesize=3_900_000)]}
+        choices, _ = build_choices(info, ffmpeg=True)
+        self.assertEqual(choices[0]["format"], "137+140")
+        self.assertEqual(choices[0]["label"], f"1080p · MP4 · {human(103_600_000)}")
+        self.assertEqual(choices[1]["format"], "160+140")
+
+    def test_mp4_signifie_h264(self):
+        info = {"formats": [fmt("399", "mp4", "av01.0.08M.08", "none", 1080, 2000),
+                            fmt("248", "webm", "vp9", "none", 1080, 2100),
+                            fmt("251", "webm", "none", "opus", tbr=160)]}
+        choices, _ = build_choices(info, ffmpeg=True)
+        self.assertEqual(choices[0]["format"], "248+251")
+        self.assertEqual(choices[0]["label"], "1080p · WEBM")
+
+
 if __name__ == "__main__":
     unittest.main()
