@@ -119,8 +119,10 @@ class VideoCookiesTest(unittest.TestCase):
 
 
     def test_format_choisi(self):
-        _, calls = self.run_video("https://vimeo.com/1", {}, fmt="137+140")
-        self.assertEqual(calls[0]["opts"]["format"], "137+140/bv*+ba/b")     # repli si le format a disparu
+        for ffmpeg, fallback in (("/usr/bin/ffmpeg", "bv*+ba/b"), (None, "b")):   # repli si le format a disparu
+            with mock.patch("pydm.engine.shutil.which", return_value=ffmpeg):
+                _, calls = self.run_video("https://vimeo.com/1", {}, fmt="137+140")
+            self.assertEqual(calls[0]["opts"]["format"], f"137+140/{fallback}")
 
     def test_nom_choisi(self):
         d, calls = self.run_video("https://vimeo.com/1", {}, stem="Ma vidéo/été")
