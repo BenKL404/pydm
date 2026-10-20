@@ -5,6 +5,7 @@ import os
 import queue
 import threading
 import time
+import urllib.request
 
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPixmap
@@ -14,7 +15,9 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog,
                                QTableWidgetItem, QToolButton, QVBoxLayout, QWidget)
 
 from .. import store
-from ..analyze import analyze
+from ..analyze import THUMB_MAX, analyze
+from ..cache import video_key
+from ..engine import UA
 from ..engine import QUALITIES
 from ..filetypes import category
 from ..util import human, human_time
@@ -25,11 +28,22 @@ TYPE_NAMES = {"video": "Vidéo", "music": "Musique", "document": "Document", "im
               "program": "Programme", "other": "Fichier"}
 
 
+def fetch_youtube_thumbnail(video_id):
+    """Miniature YouTube (adresse déduite de l'identifiant) : 64 Ko et 5 s au plus."""
+    url = f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=5) as r:
+            data = r.read(THUMB_MAX + 1)
+    except Exception:  # noqa: BLE001
+        return None
+    return data if len(data) <= THUMB_MAX else None
+
+
 class AddDialog(QDialog):
     accepted_tasks = Signal(list, bool)     # entrées à créer, démarrer (Télécharger) ou non (Plus tard)
 
     def __init__(self, settings, urls, headers=None, filename=None, kind="auto", parent=None,
-                 analyzer=analyze):
+                 analyzer=analyze, title=None, thumb_fetcher=None):
         super().__init__(parent)
         self.setAttribute(Qt.WA_DeleteOnClose)
         self.setWindowIcon(theme.logo())
@@ -37,6 +51,9 @@ class AddDialog(QDialog):
         self.filename, self.kind, self.analyzer = filename, kind, analyzer
         self.results = [None] * len(self.urls)
         self.results_q = queue.Queue()      # (index, résultat) issus des threads d'analyse
+        self.thumb_q = queue.Queue()        # miniature YouTube chargée sans attendre l'analyse
+        self.has_thumb = False
+        self.page_title = title
         self.closed = False
         self.started_at = time.monotonic()
         self.batch = len(self.urls) > 1
@@ -46,6 +63,11 @@ class AddDialog(QDialog):
             self._build_single()
         for i, url in enumerate(self.urls):
             threading.Thread(target=self._analyze, args=(i, url), daemon=True).start()
+        key = video_key(self.urls[0])
+        if not self.batch and key.startswith("youtube:"):
+            vid = key.split(":", 1)[1]
+            thumb_fetcher = thumb_fetcher or fetch_youtube_thumbnail
+            threading.Thread(target=lambda: self.thumb_q.put(thumb_fetcher(vid)), daemon=True).start()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
         self.timer.start(200)
@@ -92,7 +114,7 @@ class AddDialog(QDialog):
         self.thumb.setPixmap(theme.type_icon("other").pixmap(32, 32))
         head.addWidget(self.thumb)
         text = QVBoxLayout()
-        self.title_label = QLabel(self.urls[0])
+        self.title_label = QLabel(self.page_title or self.urls[0])
         self.title_label.setWordWrap(True)
         self.title_label.setStyleSheet("font-weight: 600; font-size: 13px;")
         self.info_label = QLabel("Analyse…")
@@ -191,6 +213,10 @@ class AddDialog(QDialog):
 
     def poll(self):
         """Intègre les résultats arrivés (appelé par le minuteur) ; rien après la fermeture."""
+        while not self.thumb_q.empty():
+            data = self.thumb_q.get()
+            if data and not self.closed and not self.has_thumb:
+                self._show_thumbnail(data)
         while not self.results_q.empty():
             i, r = self.results_q.get()
             if not self.closed and self.results[i] is None:
@@ -225,7 +251,7 @@ class AddDialog(QDialog):
             self.name_edit.setText(r["name"] or "")
         if r["kind"] == "video":
             self.setWindowTitle("Ajouter une vidéo")
-            self.title_label.setText(r.get("title") or self.urls[0])
+            self.title_label.setText(r.get("title") or self.page_title or self.urls[0])
             parts = [r.get("site")] + ([human_time(r["duration"])] if r.get("duration") else [])
             self.info_label.setText(" · ".join(p for p in parts if p))
             self.quality_box.blockSignals(True)
@@ -235,7 +261,8 @@ class AddDialog(QDialog):
             self.quality_box.blockSignals(False)
             self.quality_box.setEnabled(True)
             self.ffmpeg_label.setVisible(bool(r.get("ffmpeg_missing")))
-            self._show_thumbnail(r.get("thumbnail"))
+            if r.get("thumbnail") or not self.has_thumb:
+                self._show_thumbnail(r.get("thumbnail"))
             self._update_folder()
         else:
             self.title_label.setText(r["name"] or self.urls[0])
@@ -255,7 +282,8 @@ class AddDialog(QDialog):
     def _show_thumbnail(self, data):
         pix = QPixmap()
         if data and pix.loadFromData(data):
-            self.thumb.setPixmap(pix.scaled(128, 72, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
+            self.thumb.setPixmap(pix.scaled(128, 72, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self.has_thumb = True
         else:
             self.thumb.setPixmap(theme.type_icon("video").pixmap(40, 40))
 

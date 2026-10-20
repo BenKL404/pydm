@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFrame, QHBoxLayout
 
 from .. import __version__, ipc, store
 from ..analyze import analyze
+from ..cache import AnalysisCache
 from ..scheduler import LIMITER, Scheduler, parse_hhmm
 from ..filetypes import _BY_EXT
 from ..util import human, unique_path
@@ -49,6 +50,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.settings = settings
         self.analyzer = analyzer
+        self.cache = AnalysisCache(analyzer=analyzer)      # analyses anticipées et récentes
         self.dialogs = []               # fenêtres d'ajout ouvertes
         self._placeholders = set()      # lignes « Analyse… » en attente de la tâche réelle
         self.scheduler = Scheduler()
@@ -342,12 +344,12 @@ class MainWindow(QMainWindow):
         self.link.clear()
         self.add_urls(urls)
 
-    def add_urls(self, urls, headers=None, filename=None, kind="auto"):
+    def add_urls(self, urls, headers=None, filename=None, kind="auto", title=None):
         if self.end_dialog:             # de nouveaux téléchargements : on n'éteint plus
             self.end_dialog.reject()
             self.statusBar().showMessage("Action de fin de file annulée : nouveau téléchargement", 8000)
         if self.settings["confirm_add"]:
-            self._open_add_dialog(urls, headers, filename, kind)
+            self._open_add_dialog(urls, headers, filename, kind, title)
             return
         opts = {**self.settings, **self.overrides}
         for url in urls:
@@ -465,8 +467,9 @@ class MainWindow(QMainWindow):
         threading.Thread(target=detect, daemon=True).start()
         self._update_actions()
 
-    def _open_add_dialog(self, urls, headers, filename, kind):
-        dlg = AddDialog(self.settings, urls, headers, filename, kind, parent=self, analyzer=self.analyzer)
+    def _open_add_dialog(self, urls, headers, filename, kind, title=None):
+        dlg = AddDialog(self.settings, urls, headers, filename, kind, parent=self, analyzer=self.cache.get,
+                        title=title)
         if self.overrides.get("folder"):
             dlg.folder_edit.setText(self.overrides["folder"])
         dlg.accepted_tasks.connect(self._accept)
@@ -522,8 +525,12 @@ class MainWindow(QMainWindow):
     def tick(self):
         while not self.inbox.empty():
             msg = self.inbox.get()
+            if msg.get("action") == "prefetch" and msg.get("url"):
+                self.cache.prefetch(msg["url"], msg.get("headers"), self.settings["browser"])
+                continue            # préparation silencieuse : ni fenêtre ni premier plan
             if msg.get("action") == "add" and msg.get("url"):
-                self.add_urls([msg["url"]], msg.get("headers"), msg.get("filename"), msg.get("kind", "auto"))
+                self.add_urls([msg["url"]], msg.get("headers"), msg.get("filename"), msg.get("kind", "auto"),
+                              msg.get("title"))
                 if self.settings["confirm_add"]:
                     continue        # la fenêtre d'ajout passe devant ; la principale reste où elle est
             self.show_window()

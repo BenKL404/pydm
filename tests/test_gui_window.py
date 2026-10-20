@@ -54,6 +54,9 @@ class WindowCase(unittest.TestCase):
             self.addCleanup(patcher.stop)
         from pydm import store
         from pydm.gui.window import MainWindow
+        p = mock.patch("pydm.gui.adddialog.fetch_youtube_thumbnail", return_value=None)   # pas de réseau
+        p.start()
+        self.addCleanup(p.stop)
         self.settings = dict(store.DEFAULTS, folder=self.cfg, confirm_add=False)
         self.factory = Factory()
         self.MainWindow = MainWindow
@@ -678,6 +681,51 @@ class CorrectionsTest(QueueTest):
         w.table.selectRow(0)
         actions = {a.text(): a for a in w.build_context_menu(w.selected_tasks()).actions()}
         self.assertFalse(actions["Pause"].isEnabled())
+
+
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class PrefetchTest(WindowCase):
+    URL = "https://www.youtube.com/watch?v=abc"
+
+    def window(self, gate=None):
+        from tests.test_cache import FakeAnalyzer
+        self.analyzer = FakeAnalyzer(gate=gate)
+        return WindowCase.window(self, analyzer=self.analyzer)
+
+    def test_prefetch_sans_fenetre(self):
+        w = self.window()
+        w.hide()
+        w.handle_message({"action": "prefetch", "url": self.URL})
+        w.tick()
+        self.assertEqual(w.dialogs, [])
+        self.assertFalse(w.isVisible())
+        self.assertTrue(self.tick_until(w, lambda: w.cache.ready(self.URL)))
+        self.assertEqual(len(self.analyzer.calls), 1)
+
+    def test_ajout_apres_prefetch(self):
+        self.settings["confirm_add"] = True
+        w = self.window()
+        w.handle_message({"action": "prefetch", "url": self.URL})
+        w.tick()
+        self.assertTrue(self.tick_until(w, lambda: w.cache.ready(self.URL)))
+        w.add_urls([self.URL + "&list=x"])
+        dlg = w.dialogs[0]
+        end = time.time() + 2
+        while dlg.done_count() < 1 and time.time() < end:
+            dlg.poll()
+            time.sleep(0.01)
+        self.assertEqual(dlg.quality_box.count(), 3)
+        self.assertEqual(len(self.analyzer.calls), 1)
+
+    def test_titre_transmis(self):
+        import threading
+        gate = threading.Event()
+        self.addCleanup(gate.set)
+        self.settings["confirm_add"] = True
+        w = self.window(gate=gate)
+        w.handle_message({"action": "add", "url": self.URL, "kind": "video", "title": "Ma vidéo"})
+        w.tick()
+        self.assertEqual(w.dialogs[0].title_label.text(), "Ma vidéo")
 
 
 if __name__ == "__main__":

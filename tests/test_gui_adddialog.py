@@ -37,6 +37,9 @@ class DialogCase(unittest.TestCase):
             self.addCleanup(p.stop)
         from pydm import store
         from pydm.gui.adddialog import AddDialog
+        p = mock.patch("pydm.gui.adddialog.fetch_youtube_thumbnail", return_value=None)   # pas de réseau
+        p.start()
+        self.addCleanup(p.stop)
         self.store, self.AddDialog = store, AddDialog
         self.settings = dict(store.DEFAULTS, folder=self.cfg)
         self.emitted = []
@@ -296,6 +299,32 @@ class SortDialogTest(DialogCase):
         dlg.folder_edit.setText("/srv/dl")
         self.assertEqual(dlg.collect()[0]["folder"], "/srv/dl/Musique")
         self.assertEqual(dlg.folder_label.text(), "Dossier principal")
+
+
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class ThumbnailTest(DialogCase):
+    def test_miniature_youtube_immediate(self):
+        from PySide6.QtCore import QBuffer, QByteArray, QIODevice
+        from PySide6.QtGui import QColor, QImage
+        img = QImage(320, 180, QImage.Format_RGB32)
+        img.fill(QColor("#336699"))
+        data = QByteArray()
+        buf = QBuffer(data)
+        buf.open(QIODevice.WriteOnly)
+        img.save(buf, "PNG")
+        asked = []
+        gate = threading.Event()
+        self.addCleanup(gate.set)
+        dlg = self.AddDialog(self.settings, ["https://www.youtube.com/watch?v=abc"],
+                             analyzer=lambda *a, **k: gate.wait(5) and result(),
+                             thumb_fetcher=lambda vid: asked.append(vid) or bytes(data))
+        self.addCleanup(dlg.deleteLater)
+        end = time.time() + 2
+        while dlg.thumb.pixmap().width() != 128 and time.time() < end:
+            dlg.poll()
+            time.sleep(0.01)
+        self.assertEqual(asked, ["abc"])
+        self.assertEqual(dlg.thumb.pixmap().width(), 128)
 
 
 if __name__ == "__main__":
