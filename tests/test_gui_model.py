@@ -98,6 +98,19 @@ class ModelTest(unittest.TestCase):
         self.assertIs(self.model.task(1), new)
         self.assertEqual(rows, [1])
 
+    def test_deplacer(self):
+        for n in "abcd":
+            self.model.add(FakeTask(n))
+        names = lambda: [t.name for t in self.model.tasks()]  # noqa: E731
+        self.assertEqual(self.model.move([2], -1), [1])
+        self.assertEqual(names(), list("acbd"))
+        self.assertEqual(self.model.move([0], -1), [0])
+        self.assertEqual(names(), list("acbd"))
+        self.assertEqual(self.model.move([1], 1), [2])
+        self.assertEqual(names(), list("abcd"))
+        self.assertEqual(self.model.move_to_top([3]), [0])
+        self.assertEqual(names(), list("dabc"))
+
     def test_couleur_erreur(self):
         from PySide6.QtGui import QColor
         self.model.add(FakeTask("a", error="refus", status="Erreur : refus"))

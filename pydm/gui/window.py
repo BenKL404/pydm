@@ -7,7 +7,7 @@ import threading
 import time
 from datetime import datetime
 
-from PySide6.QtCore import QByteArray, QEvent, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QByteArray, QEvent, QItemSelection, QItemSelectionModel, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
                                QMainWindow, QMenu, QMessageBox, QPushButton, QSplitter, QTableView,
@@ -35,7 +35,7 @@ class MainWindow(QMainWindow):
         self.analyzer = analyzer
         self.dialogs = []               # fenêtres d'ajout ouvertes
         self.scheduler = Scheduler()
-        self.apply_queue_settings()
+        self.clock = datetime.now       # remplaçable dans les tests
         self.overrides = dict(overrides or {})     # options -o / -n : pour cette session seulement
         self.factory = factory
         self.inbox = queue.Queue()      # messages de l'extension (thread IPC)
@@ -75,7 +75,13 @@ class MainWindow(QMainWindow):
         self.sparkline = SpeedSparkline()
         self.status_speed = QLabel()
         self.status_speed.setContentsMargins(0, 0, 8, 0)
+        self.limit_btn = QToolButton()
+        self.limit_btn.setCheckable(True)
+        self.limit_btn.setToolTip("Limiter la vitesse totale (réglage dans Planification…)")
+        self.limit_btn.clicked.connect(self.toggle_limit)
+        self.statusBar().addPermanentWidget(self.limit_btn)
         self.statusBar().addPermanentWidget(self.sparkline)
+        self.apply_queue_settings()
         self.statusBar().addPermanentWidget(self.status_speed)
         self._last_sample = 0.0
         self.setAcceptDrops(True)
@@ -132,7 +138,17 @@ class MainWindow(QMainWindow):
         self.btn_pause = self._tool("pause", "Pause", self.pause_selected)
         self.btn_remove = self._tool("remove", "Retirer de la liste", self.remove_selected, "Suppr")
         self.btn_folder = self._tool("folder", "Ouvrir le dossier", self.open_folder, "Ctrl+O")
-        for b in (self.btn_resume, self.btn_pause, self.btn_remove, self.btn_folder):
+        self.btn_force = self._tool("force", "Forcer (démarrer tout de suite)", self.force_selected)
+        self.btn_schedule = self._tool("schedule", "Planifier", lambda: None)
+        self.schedule_menu = QMenu(self)
+        self.schedule_menu.addAction(theme.icon("resume"), "Démarrer la file", self.start_queue)
+        self.schedule_menu.addAction(theme.icon("pause"), "Arrêter la file", self.stop_queue)
+        self.schedule_menu.addSeparator()
+        self.schedule_menu.addAction(theme.icon("schedule"), "Planification…", self.open_schedule)
+        self.btn_schedule.setMenu(self.schedule_menu)
+        self.btn_schedule.setPopupMode(QToolButton.InstantPopup)
+        for b in (self.btn_resume, self.btn_pause, self.btn_force, self.btn_remove, self.btn_folder,
+                  self.btn_schedule):
             h.addWidget(b)
         h.addSpacing(8)
         self.btn_search = self._tool("search", "Rechercher", self.toggle_search, "Ctrl+F")
@@ -204,6 +220,9 @@ class MainWindow(QMainWindow):
                 return True
             if key == Qt.Key_Delete and not mods:
                 self.remove_selected()
+                return True
+            if mods == Qt.ControlModifier and key in (Qt.Key_Up, Qt.Key_Down, Qt.Key_Home):
+                self.move_selected_top() if key == Qt.Key_Home else self.move_selected(-1 if key == Qt.Key_Up else 1)
                 return True
         elif obj is self.search and event.type() == QEvent.KeyPress and event.key() == Qt.Key_Escape:
             self.toggle_search(False)
@@ -312,6 +331,23 @@ class MainWindow(QMainWindow):
         self.scheduler.window = ((parse_hhmm(s["schedule_start"]), parse_hhmm(s["schedule_end"]))
                                  if s["schedule_on"] else None)
         LIMITER.rate = s["speed_kbps"] * 1024 if s["speed_on"] else 0
+        self.limit_btn.setText(f"Limite {human(s['speed_kbps'] * 1024)}/s")
+        self.limit_btn.setChecked(s["speed_on"])
+
+    def toggle_limit(self):
+        self._set("speed_on", not self.settings["speed_on"])
+        self.apply_queue_settings()
+
+    def start_queue(self):
+        self.scheduler.start_queue()
+        self.tick()
+
+    def stop_queue(self):
+        self.scheduler.stop_queue()
+        self.tick()
+
+    def open_schedule(self):
+        """Fenêtre Planification (voir schedule.py)."""
 
     def queue_finished(self):
         """La file planifiée est terminée (action finale : voir la fenêtre Planification)."""
@@ -403,7 +439,7 @@ class MainWindow(QMainWindow):
                 self.model.replace(placeholder, task)
                 task.want = want        # la file la démarre (ou l'attend)
                 self.dirty = True
-        if self.scheduler.tick(self.model.tasks(), datetime.now()):
+        if self.scheduler.tick(self.model.tasks(), self.clock()):
             self.queue_finished()
         self.model.refresh()
         self._notify_transitions()
@@ -420,8 +456,19 @@ class MainWindow(QMainWindow):
         counts = ((sum(t.running for t in tasks), "en cours", "en cours"),
                   (sum(t.finished for t in tasks), "terminé", "terminés"),
                   (sum(bool(t.error) for t in tasks), "en erreur", "en erreur"))
-        text = " · ".join(f"{n} {one if n == 1 else many}" for n, one, many in counts if n)
-        self.status_left.setText(text or "Aucun téléchargement")
+        queued = sum(1 for t in tasks if t.want in ("now", "later") and not t.running
+                     and not t.finished and not t.error)
+        counts = counts[:1] + ((queued, "en file", "en file"),) + counts[1:]
+        parts = [f"{n} {one if n == 1 else many}" for n, one, many in counts if n]
+        sch, now = self.scheduler, self.clock()
+        if sch.window:
+            plage = f"plage {sch.window[0]:%H:%M}–{sch.window[1]:%H:%M}"
+            if not sch.queue_active(now):
+                plage += f" (reprise à {sch.next_start(now):%H:%M})"
+            parts.append(plage)
+        if sch.queue_started:
+            parts.append("file démarrée")
+        self.status_left.setText(" · ".join(parts) or "Aucun téléchargement")
         total = sum(t.speed for t in tasks if t.running)
         self.status_speed.setText(f"↓ {human(total)}/s")
         now = time.monotonic()
@@ -479,7 +526,13 @@ class MainWindow(QMainWindow):
         menu.addAction(theme.icon("resume"), "Reprendre", self.resume_selected).setEnabled(
             any(not t.running and not t.finished for t in sel))
         menu.addAction(theme.icon("pause"), "Pause", self.pause_selected).setEnabled(
-            any(t.running for t in sel))
+            any(t.running or t.want != "stop" for t in sel))
+        menu.addAction(theme.icon("force"), "Forcer", self.force_selected)
+        menu.addAction(theme.icon("schedule"), "Mettre dans la file", self.queue_selected)
+        menu.addSeparator()
+        menu.addAction("Monter\tCtrl+↑", lambda: self.move_selected(-1))
+        menu.addAction("Descendre\tCtrl+↓", lambda: self.move_selected(1))
+        menu.addAction("En tête de file\tCtrl+Origine", self.move_selected_top)
         menu.addSeparator()
         menu.addAction("Ouvrir le fichier", lambda: self.open_file(sel[0])).setEnabled(sel[0].finished)
         menu.addAction(theme.icon("folder"), "Ouvrir le dossier", self.open_folder)
@@ -579,6 +632,40 @@ class MainWindow(QMainWindow):
         self.empty.setStyleSheet(f"color: {theme.colors()['muted']}; font-size: 14px;")
         self.model.layoutChanged.emit()
         self._update_detail()
+
+    def force_selected(self):
+        for t in self.selected_tasks():
+            if not t.finished:
+                t.want = "force"
+        self.dirty = True
+        self.tick()
+
+    def queue_selected(self):
+        for t in self.selected_tasks():
+            if not t.finished:
+                t.want = "later"
+        self.dirty = True
+        self.tick()
+
+    def _reorder(self, mover):
+        rows = [self.model.row_of(t) for t in self.selected_tasks()]
+        if not rows:
+            return
+        self.proxy.sort(-1)                         # l'ordre de la liste devient celui de la file
+        self.table.horizontalHeader().setSortIndicator(-1, Qt.AscendingOrder)
+        new = mover(rows)
+        sel = QItemSelection()
+        for r in new:
+            idx = self.proxy.mapFromSource(self.model.index(r, 0))
+            sel.select(idx, idx)
+        self.table.selectionModel().select(sel, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows)
+        self.dirty = True
+
+    def move_selected(self, delta):
+        self._reorder(lambda rows: self.model.move(rows, delta))
+
+    def move_selected_top(self):
+        self._reorder(self.model.move_to_top)
 
     def resume_selected(self):
         for t in self.selected_tasks():

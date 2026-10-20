@@ -465,5 +465,91 @@ class QueueTest(WindowCase):
         self.assertEqual((w.scheduler.max_active, LIMITER.rate), (1, 102400))
 
 
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class QueueCommandsTest(QueueTest):
+    def select(self, w, row):
+        w.table.clearSelection()
+        w.table.selectRow(row)
+
+    def test_forcer(self):
+        w = self.window()
+        tasks = self.four(w)
+        self.select(w, 3)
+        w.force_selected()
+        w.tick()
+        self.assertTrue(tasks[3].started)
+
+    def test_mettre_dans_la_file(self):
+        w = self.window()
+        t = FakeDownload("https://a.fr/p.bin", self.cfg)
+        t.want = "stop"
+        w.model.add(t)
+        self.select(w, 0)
+        w.queue_selected()
+        w.tick()
+        self.assertEqual((t.want, t.status), ("later", "En file planifiée"))
+
+    def test_monter_retire_le_tri(self):
+        from PySide6.QtCore import Qt
+        w = self.window()
+        for name, size in (("a", 30), ("b", 10), ("c", 20)):
+            t = FakeDownload(f"https://a.fr/{name}", self.cfg)
+            t.size, t.want = size, "stop"
+            w.model.add(t)
+        w.proxy.sort(1, Qt.AscendingOrder)       # b, c, a
+        self.select(w, 2)                        # a (ligne 0 du modèle)
+        w.move_selected(1)
+        self.assertEqual([t.url[-1] for t in w.model.tasks()], ["b", "a", "c"])
+        self.assertEqual(w.proxy.sortColumn(), -1)
+        self.assertEqual([t.url[-1] for t in w.selected_tasks()], ["a"])
+
+    def test_raccourci_ctrl_haut(self):
+        from PySide6.QtCore import Qt
+        from PySide6.QtTest import QTest
+        w = self.window()
+        for name in "ab":
+            t = FakeDownload(f"https://a.fr/{name}", self.cfg)
+            t.want = "stop"
+            w.model.add(t)
+        self.select(w, 1)
+        QTest.keyClick(w.table, Qt.Key_Up, Qt.ControlModifier)
+        self.assertEqual([t.url[-1] for t in w.model.tasks()], ["b", "a"])
+        QTest.keyClick(w.table, Qt.Key_End, Qt.ControlModifier)
+        QTest.keyClick(w.table, Qt.Key_Home, Qt.ControlModifier)
+        self.assertEqual(w.selected_tasks()[0].url[-1], "b")
+
+    def test_barre_etat_file(self):
+        from datetime import datetime
+        self.settings.update(max_active=2, schedule_on=True)
+        w = self.window()
+        w.clock = lambda: datetime(2026, 10, 20, 15, 0)
+        w.add_urls([f"https://a.fr/{i}.bin" for i in range(5)])
+        self.assertTrue(self.tick_until(w, lambda: all(isinstance(t, FakeDownload) for t in w.model.tasks())
+                                        and w.model.rowCount() == 5))
+        w.tick()
+        self.assertIn("2 en cours · 3 en file · plage 01:00–07:00 (reprise à 01:00)", w.status_left.text())
+
+    def test_bouton_limite(self):
+        from pydm import store
+        from pydm.scheduler import LIMITER
+        self.addCleanup(setattr, LIMITER, "rate", 0)
+        w = self.window()
+        self.assertEqual(w.limit_btn.text(), "Limite 2.0 Mo/s")
+        w.limit_btn.click()
+        self.assertIs(w.settings["speed_on"], True)
+        self.assertEqual(LIMITER.rate, 2048 * 1024)
+        self.assertIs(store.load_settings(self.cfg)["speed_on"], True)
+        w.limit_btn.click()
+        self.assertEqual(LIMITER.rate, 0)
+
+    def test_menu_planifier(self):
+        w = self.window()
+        labels = [a.text() for a in w.btn_schedule.menu().actions() if not a.isSeparator()]
+        self.assertEqual(labels, ["Démarrer la file", "Arrêter la file", "Planification…"])
+        w.btn_schedule.menu().actions()[0].trigger()
+        self.assertIs(w.scheduler.queue_started, True)
+        self.assertIn("file démarrée", (w.tick() or w.status_left.text()))
+
+
 if __name__ == "__main__":
     unittest.main()

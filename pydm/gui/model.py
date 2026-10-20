@@ -78,6 +78,29 @@ class DownloadModel(QAbstractTableModel):
         self._snaps[row] = self._snap(new)
         self.dataChanged.emit(self.index(row, 0), self.index(row, len(COLUMNS) - 1))
 
+    def move(self, rows, delta):
+        """Décale les lignes d'un cran (delta ±1) ; renvoie leurs nouvelles positions."""
+        self.layoutAboutToBeChanged.emit()
+        taken, new = set(), []
+        for r in sorted(set(rows), reverse=delta > 0):
+            t = r + delta
+            if 0 <= t < len(self._tasks) and t not in taken:
+                for lst in (self._tasks, self._snaps):
+                    lst[r], lst[t] = lst[t], lst[r]
+                r = t
+            taken.add(r)
+            new.append(r)
+        self.layoutChanged.emit()
+        return sorted(new)
+
+    def move_to_top(self, rows):
+        rows = sorted(set(rows))
+        self.layoutAboutToBeChanged.emit()
+        for lst in (self._tasks, self._snaps):
+            lst[:] = [lst[r] for r in rows] + [x for i, x in enumerate(lst) if i not in rows]
+        self.layoutChanged.emit()
+        return list(range(len(rows)))
+
     def task(self, row):
         return self._tasks[row]
 

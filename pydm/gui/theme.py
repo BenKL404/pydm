@@ -97,6 +97,7 @@ STYLE = """
 QToolButton {{ border: none; border-radius: 6px; padding: 5px; }}
 QToolButton:hover {{ background: {border}; }}
 QToolButton:disabled {{ background: transparent; }}
+QToolButton:checked {{ background: {select}; color: {select_text}; }}
 QToolButton::menu-indicator {{ image: none; width: 0; }}
 QFrame#header {{ border-bottom: 1px solid {border}; }}
 QLineEdit, QComboBox {{ border: 1px solid {border}; border-radius: 6px; padding: 5px 8px;
