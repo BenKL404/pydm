@@ -3,13 +3,13 @@
 """Moteur de téléchargement : fichiers directs multi-connexions et vidéos via yt-dlp."""
 import json
 import os
-from datetime import datetime
 import re
 import shutil
 import threading
 import time
 import urllib.parse
 import urllib.request
+from datetime import datetime
 from email.message import Message
 
 from .util import unique_path
@@ -18,6 +18,7 @@ CHUNK = 64 * 1024
 MIN_SPLIT = 2 * 1024 * 1024
 MAX_RETRIES = 6
 UA = "Mozilla/5.0 (X11; Linux x86_64) PyDM/1.0"
+_NAMES = threading.Lock()     # choix du nom + création du .part : atomique entre téléchargements
 QUALITIES = {
     "Meilleure": "bv*+ba/b",
     "1080p": "bv*[height<=1080]+ba/b[height<=1080]/b",
@@ -173,10 +174,12 @@ class Download(_Task):
                 open(self.part_path, "wb").close()
             return
         if not self.name:
-            self.name = name
-            if self._load_state() and self.size == size:
-                return
-            self.name = unique_path(self.folder, name)
+            with _NAMES:
+                self.name = name
+                if self._load_state() and self.size == size:
+                    return
+                self.name = unique_path(self.folder, name)
+                open(self.part_path, "wb").close()      # réserve le nom
         self.size, self.ranges = size, ranges
         if size and ranges:
             n = max(1, min(self.parts, size // MIN_SPLIT or 1))
@@ -292,7 +295,12 @@ class Download(_Task):
             self._save_state()
             self.status = f"Erreur : {self.error}" if self.error else "En pause"
             return
-        os.replace(self.part_path, self.path)
+        try:
+            os.replace(self.part_path, self.path)
+        except OSError as e:
+            self.error = str(e)
+            self.status = f"Erreur : {e}"
+            return
         try:
             os.remove(self.state_path)
         except OSError:

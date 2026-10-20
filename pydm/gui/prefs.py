@@ -13,7 +13,7 @@ AUTOSTART = """[Desktop Entry]
 Type=Application
 Name=PyDM
 Comment=Gestionnaire de téléchargement multi-connexions
-Exec=pydm --minimized
+Exec="{launcher}" --minimized
 Icon=pydm
 Terminal=false
 X-GNOME-Autostart-enabled=true
@@ -21,11 +21,12 @@ X-GNOME-Autostart-enabled=true
 
 
 def set_autostart(enabled, home=None):
-    path = os.path.join(home or os.path.expanduser("~"), ".config", "autostart", "pydm.desktop")
+    home = home or os.path.expanduser("~")
+    path = os.path.join(home, ".config", "autostart", "pydm.desktop")
     if enabled:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w") as f:
-            f.write(AUTOSTART)
+            f.write(AUTOSTART.format(launcher=os.path.join(home, ".local", "bin", "pydm")))
     else:
         try:
             os.remove(path)

@@ -25,9 +25,10 @@ WIDTHS = (300, 80, 190, 90, 80, 170, 120)
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, settings, factory=make_download):
+    def __init__(self, settings, factory=make_download, overrides=None):
         super().__init__()
         self.settings = settings
+        self.overrides = dict(overrides or {})     # options -o / -n : pour cette session seulement
         self.factory = factory
         self.inbox = queue.Queue()      # messages de l'extension (thread IPC)
         self.detected = queue.Queue()   # (ligne provisoire, tâche) issus des threads de détection
@@ -130,10 +131,10 @@ class MainWindow(QMainWindow):
         h.addWidget(self.btn_search)
         self.btn_menu = self._tool("menu", "Menu", lambda: None)
         self.menu = QMenu(self)
-        self.menu.addAction("Préférences…", self.open_preferences, QKeySequence("Ctrl+,"))
+        self.menu.addAction("Préférences…\tCtrl+,", self.open_preferences)
         self.menu.addAction("À propos de PyDM", self.about)
         self.menu.addSeparator()
-        self.menu.addAction("Quitter", self.quit_app)
+        self.menu.addAction("Quitter\tCtrl+Q", self.quit_app)
         self.btn_menu.setMenu(self.menu)
         self.btn_menu.setPopupMode(QToolButton.InstantPopup)
         h.addWidget(self.btn_menu)
@@ -178,7 +179,7 @@ class MainWindow(QMainWindow):
     def _shortcuts(self):
         for keys, slot in ((QKeySequence.Find, self.toggle_search), ("Ctrl+O", self.open_folder),
                            ("Ctrl+,", self.open_preferences),
-                           (QKeySequence.Quit, self.quit_app), ("Ctrl+Q", self.quit_app)):
+                           ("Ctrl+Q", self.quit_app)):
             QShortcut(QKeySequence(keys), self, slot)
 
     def eventFilter(self, obj, event):
@@ -211,9 +212,10 @@ class MainWindow(QMainWindow):
         event.acceptProposedAction()
 
     def drop_mime(self, mime):
-        text = mime.text() if mime.hasText() else ""
-        if mime.hasUrls():
-            text += "\n" + "\n".join(u.toString() for u in mime.urls())
+        if mime.hasUrls():      # les navigateurs fournissent aussi le texte : on ne garde que les liens
+            text = "\n".join(u.toString(QUrl.FullyEncoded) for u in mime.urls())
+        else:
+            text = mime.text()
         urls = extract_urls(text)
         if urls:
             self.add_urls(urls)
@@ -257,9 +259,11 @@ class MainWindow(QMainWindow):
     # --- session ---------------------------------------------------------------
     def _load_session(self):
         for e in store.load_session():
+            if not (isinstance(e, dict) and isinstance(e.get("url"), str) and isinstance(e.get("folder"), str)):
+                continue        # entrée abîmée : ignorée plutôt que d'empêcher le démarrage
             try:
                 t = task_from_entry(e)
-            except (KeyError, TypeError, ValueError):
+            except (KeyError, TypeError, ValueError, AttributeError):
                 continue
             if t.status == "En attente":
                 t.status = "En pause"
@@ -279,8 +283,9 @@ class MainWindow(QMainWindow):
         self.add_urls(urls)
 
     def add_urls(self, urls, headers=None, filename=None, kind="auto"):
-        folder = os.path.expanduser(self.settings["folder"])
-        parts, quality, browser = self.settings["parts"], self.settings["quality"], self.settings["browser"]
+        opts = {**self.settings, **self.overrides}
+        folder = os.path.expanduser(opts["folder"])
+        parts, quality, browser = opts["parts"], opts["quality"], opts["browser"]
         for url in urls:
             placeholder = Download(url, folder, parts)
             placeholder.status = "Analyse…"

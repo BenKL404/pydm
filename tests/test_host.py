@@ -21,6 +21,13 @@ class HostTest(unittest.TestCase):
     def test_ping(self):
         self.assertTrue(call_host({"action": "ping"})["ok"])
 
+    def test_ytdlp_de_l_environnement(self):
+        with tempfile.TemporaryDirectory() as home:
+            env = dict(os.environ, HOME=home, PYDM_CONFIG_DIR=os.path.join(home, "cfg"))
+            self.assertFalse(call_host({"action": "ping"}, env)["ytdlp"])
+            os.makedirs(os.path.join(home, ".local/share/pydm/venv/lib/python3.12/site-packages/yt_dlp"))
+            self.assertTrue(call_host({"action": "ping"}, env)["ytdlp"])
+
     def test_non_installe(self):
         with tempfile.TemporaryDirectory() as home:
             env = dict(os.environ, HOME=home, PYDM_CONFIG_DIR=os.path.join(home, "cfg"))

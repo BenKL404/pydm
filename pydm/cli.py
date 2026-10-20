@@ -15,6 +15,7 @@ flux HLS/DASH…) via yt-dlp s'il est installé : pip install -U yt-dlp
 Moteur et ligne de commande : bibliothèque standard uniquement ; interface : PySide6 (Qt 6).
 """
 import argparse
+import os
 import sys
 import time
 
@@ -48,11 +49,22 @@ def run_cli(url, folder, parts, quality="Meilleure", browser="Aucun"):
     return 0 if d.finished else 1
 
 
+def connections(value):
+    n = int(value)
+    if not 1 <= n <= 32:
+        raise argparse.ArgumentTypeError("le nombre de connexions doit être entre 1 et 32")
+    return n
+
+
+def folder(value):
+    return os.path.abspath(os.path.expanduser(value))
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="pydm", description="PyDM - téléchargements multi-connexions")
     p.add_argument("url", nargs="?", help="URL à télécharger (sans URL : interface graphique)")
-    p.add_argument("-o", "--output", help="dossier de destination (défaut : celui des préférences)")
-    p.add_argument("-n", "--connections", type=int, help="nombre de connexions (défaut : préférences, 8)")
+    p.add_argument("-o", "--output", type=folder, help="dossier de destination (défaut : celui des préférences)")
+    p.add_argument("-n", "--connections", type=connections, help="nombre de connexions (défaut : préférences, 8)")
     p.add_argument("-q", "--qualite", default="Meilleure", choices=list(QUALITIES),
                    help="qualité pour les vidéos de streaming")
     p.add_argument("--cookies", default="Aucun", choices=BROWSERS,
@@ -61,7 +73,7 @@ def main(argv=None):
     a = p.parse_args(argv)
     settings = store.load_settings()
     if a.url:
-        sys.exit(run_cli(a.url, a.output or settings["folder"], a.connections or settings["parts"],
+        sys.exit(run_cli(a.url, a.output or os.path.expanduser(settings["folder"]), a.connections or settings["parts"],
                          a.qualite, a.cookies))
     if instance_running():      # déjà ouvert : on affiche la fenêtre existante
         return

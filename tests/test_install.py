@@ -33,7 +33,7 @@ class InstallTest(unittest.TestCase):
                 self.assertTrue(json.load(f)["path"].endswith("pydm_host.py"))
             with open(j(".local/share/applications/pydm.desktop")) as f:
                 desktop = f.read()
-            self.assertIn("Exec=pydm", desktop)
+            self.assertIn(f'Exec="{home}/.local/bin/pydm"', desktop)
             self.assertIn("Icon=pydm", desktop)
             r = subprocess.run([launcher, "--help"], env=env, capture_output=True, text=True, timeout=30)
             self.assertEqual(r.returncode, 0, r.stderr)

@@ -18,11 +18,8 @@ def run(settings, default_dir=None, parts=None, minimized=False):
     app.setDesktopFileName("pydm")
     app.setWindowIcon(theme.logo())
     theme.apply(app, settings["theme"])
-    if default_dir:
-        settings["folder"] = default_dir
-    if parts:
-        settings["parts"] = parts
-    window = MainWindow(settings)
+    overrides = {k: v for k, v in (("folder", default_dir), ("parts", parts)) if v}
+    window = MainWindow(settings, overrides=overrides)
     app.styleHints().colorSchemeChanged.connect(lambda *_: window.refresh_icons())
     if QSystemTrayIcon.isSystemTrayAvailable():
         window.tray = Tray(window)

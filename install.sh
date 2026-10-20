@@ -52,7 +52,7 @@ if [ -f "$SRC/pydm/gui/icons/logo.svg" ]; then
     mkdir -p "$ICONS/scalable/apps"
     cp "$SRC/pydm/gui/icons/logo.svg" "$ICONS/scalable/apps/pydm.svg"
 fi
-cp "$SRC/pydm.desktop" "$HOME/.local/share/applications/pydm.desktop"
+sed "s|^Exec=.*|Exec=\"$HOME/.local/bin/pydm\"|" "$SRC/pydm.desktop" > "$HOME/.local/share/applications/pydm.desktop"
 echo "PyDM installé dans $DEST (commande : pydm)"
 
 write_manifest() {   # $1 = dossier, $2 = clé (allowed_origins / allowed_extensions), $3 = valeur

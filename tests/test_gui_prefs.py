@@ -19,7 +19,7 @@ class PrefsTest(unittest.TestCase):
             self.prefs.set_autostart(True, home=home)
             with open(path) as f:
                 content = f.read()
-            self.assertIn("Exec=pydm --minimized", content)
+            self.assertIn(f'Exec="{home}/.local/bin/pydm" --minimized', content)
             self.assertIn("Icon=pydm", content)
             self.prefs.set_autostart(False, home=home)
             self.assertFalse(os.path.exists(path))

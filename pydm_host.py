@@ -7,6 +7,7 @@ Le navigateur lance ce script et lui passe un message (4 octets de longueur
 + JSON). Il le transmet à PyDM par sa socket Unix, en démarrant PyDM au
 besoin, puis renvoie la réponse à l'extension.
 """
+import glob
 import json
 import os
 import socket
@@ -18,6 +19,8 @@ import time
 CONFIG_DIR = os.environ.get("PYDM_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".config", "pydm")
 SOCKET_PATH = os.path.join(CONFIG_DIR, "pydm.sock")
 LAUNCHER = os.path.join(os.path.expanduser("~"), ".local", "bin", "pydm")
+YTDLP = os.path.join(os.path.expanduser("~"), ".local", "share", "pydm", "venv", "lib", "python*",
+                     "site-packages", "yt_dlp")     # PyDM tourne dans son environnement, pas le Python système
 
 
 def read_message():
@@ -60,12 +63,7 @@ def main():
     if msg is None:
         return
     if msg.get("action") == "ping":
-        try:
-            import yt_dlp  # noqa: F401
-            ytdlp = True
-        except ImportError:
-            ytdlp = False
-        send_message({"ok": True, "ytdlp": ytdlp})
+        send_message({"ok": True, "ytdlp": bool(glob.glob(YTDLP))})
     else:
         send_message(forward(msg))
 

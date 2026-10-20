@@ -63,6 +63,19 @@ class DownloadTest(unittest.TestCase):
         self.assertEqual(d.active_connections, 0)
         self.assertEqual(d.files(), [d.path])
 
+    def test_meme_nom_en_parallele(self):
+        cd = "attachment; filename*=UTF-8''%C3%A9t%C3%A9.bin"
+        url = self.start_server(headers={"Content-Disposition": cd}, delay=0.001)
+        tasks = [Download(url + f"?id={i}", self.dir, parts=4) for i in range(3)]
+        for d in tasks:
+            d.start()
+        for d in tasks:
+            wait(d, 60)
+        self.assertEqual(len({d.name for d in tasks}), 3, [d.name for d in tasks])
+        for d in tasks:
+            self.assertEqual(d.status, "Terminé")
+            self.assertEqual(self.read(d), self.data)
+
     def test_serveur_sans_plages(self):
         d = Download(self.start_server(ranges=False), self.dir, parts=4)
         d.start()

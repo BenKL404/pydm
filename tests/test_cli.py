@@ -14,6 +14,12 @@ class CliTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("--connections", r.stdout)
 
+    def test_connexions_hors_bornes(self):
+        r = subprocess.run([sys.executable, "-m", "pydm", "-n", "100", "https://a.fr/x"], cwd=ROOT,
+                           capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("1 et 32", r.stderr)
+
     def test_sans_pyside6(self):
         with tempfile.TemporaryDirectory() as tmp:
             fake = os.path.join(tmp, "PySide6")

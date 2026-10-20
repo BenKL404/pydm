@@ -36,7 +36,7 @@ class Factory:
 
     def __call__(self, url, folder, parts=8, quality="Meilleure", browser="Aucun",
                  headers=None, filename=None, kind="auto"):
-        self.calls.append({"url": url, "kind": kind, "quality": quality})
+        self.calls.append({"url": url, "kind": kind, "quality": quality, "folder": folder, "parts": parts})
         return FakeDownload(url, folder, parts)
 
 
@@ -56,8 +56,8 @@ class WindowCase(unittest.TestCase):
         self.factory = Factory()
         self.MainWindow = MainWindow
 
-    def window(self):
-        w = self.MainWindow(self.settings, factory=self.factory)
+    def window(self, **kw):
+        w = self.MainWindow(self.settings, factory=self.factory, **kw)
         self.addCleanup(w.deleteLater)
         return w
 
@@ -99,6 +99,34 @@ class WindowTest(WindowCase):
         self.assertEqual(w.model.rowCount(), 2)
         self.assertFalse(any(t.running for t in w.model.tasks()))
 
+    def test_session_mal_formee(self):
+        entries = ["x", None, {"url": None, "folder": self.cfg}, {"url": "https://a.fr/ok.bin"},
+                   {"url": "https://a.fr/bon.bin", "folder": self.cfg}]
+        with open(os.path.join(self.cfg, "session.json"), "w") as f:
+            json.dump(entries, f)
+        w = self.window()
+        self.assertEqual([t.url for t in w.model.tasks()], ["https://a.fr/bon.bin"])
+
+    def test_options_de_lancement_non_enregistrees(self):
+        from pydm import store
+        w = self.window(overrides={"folder": "/tmp/ailleurs", "parts": 3})
+        w.add_urls(["https://a.fr/o.bin"])
+        self.assertTrue(self.tick_until(w, lambda: self.factory.calls))
+        self.assertEqual((self.factory.calls[0]["folder"], self.factory.calls[0]["parts"]), ("/tmp/ailleurs", 3))
+        w._set("quality", "720p")
+        saved = store.load_settings(self.cfg)
+        self.assertEqual((saved["folder"], saved["parts"], saved["quality"]), (self.cfg, 8, "720p"))
+
+    def test_raccourcis_uniques(self):
+        from PySide6.QtGui import QAction, QShortcut
+        w = self.window()
+        seqs = [s.key().toString() for s in w.findChildren(QShortcut)]
+        seqs += [a.shortcut().toString() for a in w.findChildren(QAction) if not a.shortcut().isEmpty()]
+        dupes = sorted({s for s in seqs if seqs.count(s) > 1})
+        self.assertEqual(dupes, [])
+        self.assertIn("Ctrl+,", seqs)
+        self.assertIn("Ctrl+Q", seqs)
+
     def test_session_enregistree(self):
         w = self.window()
         w.add_urls(["https://a.fr/z.iso"])
@@ -127,6 +155,18 @@ class ComfortTest(WindowCase):
         mime.setText("https://a.fr/1\nhttps://a.fr/2\nhttps://a.fr/1")
         w.drop_mime(mime)
         self.assertTrue(self.tick_until(w, lambda: len(self.factory.calls) == 2))
+        self.assertEqual(w.model.rowCount(), 2)
+
+    def test_depot_liens_encodes(self):
+        from PySide6.QtCore import QMimeData, QUrl
+        w = self.window()
+        raws = ["http://h.fr/a%20b.zip", "http://h.fr/%C3%A9t%C3%A9.zip"]
+        mime = QMimeData()
+        mime.setUrls([QUrl(r) for r in raws])
+        mime.setText("\n".join(raws))         # les navigateurs fournissent les deux
+        w.drop_mime(mime)
+        self.assertTrue(self.tick_until(w, lambda: len(self.factory.calls) >= 2))
+        self.assertEqual(sorted(c["url"] for c in self.factory.calls), sorted(raws))
         self.assertEqual(w.model.rowCount(), 2)
 
     def test_coller_ctrl_v(self):
