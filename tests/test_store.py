@@ -67,6 +67,18 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(task_from_entry({"url": "https://a.fr/x", "folder": "/tmp"}).want, "stop")
 
 
+    def test_termine_puis_deplace_pas_retelecharge(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "film.iso")
+        open(path, "wb").close()
+        t = Download("https://a.fr/film.iso", tmp.name, name="film.iso")
+        self.assertTrue(t.finished)
+        e = json.loads(json.dumps(entry_from_task(t)))
+        os.remove(path)
+        self.assertEqual(task_from_entry(e).want, "stop")
+
+
 class FolderForTest(unittest.TestCase):
     def settings(self, **kw):
         return dict(store.DEFAULTS, folder="/dl", **kw)

@@ -125,5 +125,16 @@ class SchedulerTest(unittest.TestCase):
         self.assertFalse(s2.tick(only_now, NOW))
 
 
+    def test_pause_de_tout_pas_de_fin(self):
+        s = Scheduler(3)
+        s.start_queue()
+        tasks = [FakeTask("later") for _ in range(5)]
+        s.tick(tasks, NOW)
+        for t in tasks:
+            t.want = "stop"
+            t.pause()
+        self.assertFalse(s.tick(tasks, NOW))
+
+
 if __name__ == "__main__":
     unittest.main()

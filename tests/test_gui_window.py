@@ -551,5 +551,49 @@ class QueueCommandsTest(QueueTest):
         self.assertIn("file démarrée", (w.tick() or w.status_left.text()))
 
 
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class QueueFixesTest(QueueTest):
+    def errored(self, w):
+        t = FakeDownload("https://a.fr/e.bin", self.cfg)
+        t.error, t.status, t.want = "boom", "Erreur : boom", "stop"
+        w.model.add(t)
+        w.table.selectRow(0)
+        return t
+
+    def test_reessayer_apres_erreur(self):
+        w = self.window()
+        t = self.errored(w)
+        w.resume_selected()
+        w.tick()
+        self.assertTrue(t.started)
+        self.assertIsNone(t.error)
+
+    def test_forcer_apres_erreur(self):
+        w = self.window()
+        t = self.errored(w)
+        w.force_selected()
+        self.assertTrue(t.started)
+
+    def test_ligne_analyse_non_demarree(self):
+        import threading
+        gate = threading.Event()
+        self.addCleanup(gate.set)
+        slow = Factory()
+        original = slow.__call__
+
+        def factory(*a, **k):
+            gate.wait(5)
+            return original(*a, **k)
+        self.factory = factory
+        w = self.window()
+        w.add_urls(["https://a.fr/lent.bin"])
+        placeholder = w.model.task(0)
+        w.resume_all()
+        w.table.selectRow(0)
+        w.force_selected()
+        w.tick()
+        self.assertIsNone(placeholder._thread)
+
+
 if __name__ == "__main__":
     unittest.main()

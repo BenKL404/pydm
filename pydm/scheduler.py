@@ -29,6 +29,7 @@ class Scheduler:
         self.window = window            # None ou (début, fin) en datetime.time
         self.queue_started = False      # file planifiée démarrée à la main
         self.armed = False              # une tâche « later » a été lancée
+        self._launched = set()          # tâches lancées par la file planifiée (id)
 
     def start_queue(self):
         self.queue_started = True
@@ -74,7 +75,9 @@ class Scheduler:
                 if t.want == want and _waiting(t):
                     t.start()
                     free -= 1
-                    self.armed = self.armed or want == "later"
+                    if want == "later":
+                        self.armed = True
+                        self._launched.add(id(t))
         resume = self.next_start(now) if self.window and not active else None
         for t in tasks:
             if _waiting(t) and t.want == "now":
@@ -83,9 +86,13 @@ class Scheduler:
                 t.status = "En file planifiée" + (f" (reprise à {resume:%H:%M})" if resume else "")
         pending = any(t.want in ("now", "later") and not t.finished and not t.error for t in tasks)
         forced = any(t.want == "force" and t.running for t in tasks)
-        if self.armed and not pending and not forced:
+        launched = [t for t in tasks if id(t) in self._launched]
+        # une file arrêtée par l'utilisateur (tâches mises en pause) n'est pas « terminée »
+        done = bool(launched) and all(t.finished or t.error for t in launched)
+        if self.armed and not pending and not forced and done:
             self.armed = False
             self.queue_started = False
+            self._launched.clear()
             return True
         return False
 

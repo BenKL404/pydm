@@ -35,6 +35,7 @@ class MainWindow(QMainWindow):
         self.settings = settings
         self.analyzer = analyzer
         self.dialogs = []               # fenêtres d'ajout ouvertes
+        self._placeholders = set()      # lignes « Analyse… » en attente de la tâche réelle
         self.scheduler = Scheduler()
         self.clock = datetime.now       # remplaçable dans les tests
         self.end_delay = 60             # secondes avant l'action finale
@@ -386,6 +387,7 @@ class MainWindow(QMainWindow):
         placeholder = Download(url, folder, parts)
         placeholder.status = "Analyse…"
         placeholder.want = "stop"       # la file ne démarre pas la ligne provisoire
+        self._placeholders.add(placeholder)
         self.model.add(placeholder)
 
         def detect():   # réseau : hors du thread de l'interface
@@ -464,9 +466,11 @@ class MainWindow(QMainWindow):
             self.show_window()
         while not self.detected.empty():
             placeholder, task, want = self.detected.get()
+            self._placeholders.discard(placeholder)
             if placeholder in self.model.tasks():
                 self.model.replace(placeholder, task)
-                task.want = want        # la file la démarre (ou l'attend)
+                # la file la démarre (ou l'attend) ; une pause demandée pendant l'analyse est gardée
+                task.want = "stop" if getattr(placeholder, "user_stop", False) else want
                 self.dirty = True
         if self.scheduler.tick(self.model.tasks(), self.clock()):
             self.queue_finished()
@@ -578,12 +582,19 @@ class MainWindow(QMainWindow):
         else:
             self.detail.setVisible(not self.detail.isVisible())
 
+    def _set_want(self, t, want):
+        """Change l'état voulu à la demande de l'utilisateur (relance une tâche en erreur)."""
+        if t.finished or t in self._placeholders:
+            return
+        t.error = None
+        t.want = want
+
     def toggle_selected(self):
         for t in self.selected_tasks():
             if t.running or t.want in ("now", "later", "force"):
                 self._stop(t)
-            elif not t.finished:
-                t.want = "now"
+            else:
+                self._set_want(t, "now")
         self.dirty = True
 
     def copy_links(self):
@@ -629,8 +640,8 @@ class MainWindow(QMainWindow):
 
     def resume_all(self):
         for t in self.model.tasks():
-            if not t.finished:
-                t.want = "now"
+            if t.want != "now":
+                self._set_want(t, "now")
         self.dirty = True
 
     def open_preferences(self):
@@ -664,15 +675,13 @@ class MainWindow(QMainWindow):
 
     def force_selected(self):
         for t in self.selected_tasks():
-            if not t.finished:
-                t.want = "force"
+            self._set_want(t, "force")
         self.dirty = True
         self.tick()
 
     def queue_selected(self):
         for t in self.selected_tasks():
-            if not t.finished:
-                t.want = "later"
+            self._set_want(t, "later")
         self.dirty = True
         self.tick()
 
@@ -698,12 +707,12 @@ class MainWindow(QMainWindow):
 
     def resume_selected(self):
         for t in self.selected_tasks():
-            if not t.finished:
-                t.want = "now"
+            self._set_want(t, "now")
         self.dirty = True
 
-    @staticmethod
-    def _stop(t):
+    def _stop(self, t):
+        if t in self._placeholders:
+            t.user_stop = True
         t.want = "stop"
         t.pause()
         if not t.running and not t.finished and not t.error:

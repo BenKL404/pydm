@@ -154,10 +154,25 @@ class VideoCookiesTest(unittest.TestCase):
 
     def test_hook_freine(self):
         d = VideoDownload("https://vimeo.com/1", "/tmp")
+        reports = (("v.mp4", 800 * 2 ** 20), ("v.mp4", 800 * 2 ** 20 + 2000),   # reprise : déjà 800 Mo
+                   ("a.m4a", 500), ("a.m4a", 900), ("a.m4a", 800))               # nouveau fichier, puis désordre
         with mock.patch("pydm.engine.LIMITER") as lim:
-            for n in (1000, 3000, 500):
-                d._hook({"status": "downloading", "downloaded_bytes": n})
-        self.assertEqual([c.args[0] for c in lim.consume.call_args_list], [1000, 2000, 500])
+            for name, n in reports:
+                d._hook({"status": "downloading", "downloaded_bytes": n, "filename": name})
+        self.assertEqual([c.args[0] for c in lim.consume.call_args_list], [2000, 400])
+
+
+    def test_sans_ytdlp_erreur(self):
+        from pydm.scheduler import Scheduler
+        from datetime import datetime
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(sys.modules, {"yt_dlp": None}):
+            d = VideoDownload("https://vimeo.com/1", tmp)
+            s = Scheduler(3)
+            for _ in range(5):
+                s.tick([d], datetime.now())
+                d.wait(2)
+        self.assertTrue(d.error)
+        self.assertEqual(d.want, "stop")
 
 
 class AttemptsTest(unittest.TestCase):

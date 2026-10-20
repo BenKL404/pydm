@@ -343,7 +343,7 @@ class VideoDownload(_Task):
         self.want = "now"      # now, later, force, stop (voir scheduler)
         self.stop_evt = threading.Event()
         self._rate_lock = threading.Lock()
-        self._last_bytes = 0
+        self._last_bytes = self._last_file = None
         self.status = "Terminé" if name and os.path.exists(self.path) else (
             "En pause" if name else "En attente")
 
@@ -368,9 +368,12 @@ class VideoDownload(_Task):
         if d["status"] == "downloading":
             got = d.get("downloaded_bytes") or 0
             with self._rate_lock:       # yt-dlp appelle le hook depuis plusieurs threads
-                if got < self._last_bytes:      # fichier suivant (audio après vidéo)
-                    self._last_bytes = 0
-                delta, self._last_bytes = got - self._last_bytes, got
+                if self._last_bytes is None or d.get("filename") != self._last_file:
+                    # début (déjà sur le disque en cas de reprise) ou fichier suivant : rien à freiner
+                    self._last_file, self._last_bytes, delta = d.get("filename"), got, 0
+                else:                   # les fragments peuvent arriver dans le désordre
+                    delta = got - self._last_bytes
+                    self._last_bytes = max(self._last_bytes, got)
             if delta > 0:
                 LIMITER.consume(delta, self.stop_evt)
             self.done = got
@@ -387,8 +390,10 @@ class VideoDownload(_Task):
         try:
             import yt_dlp
         except ImportError:
-            self.status = "Erreur : yt-dlp absent (pip install -U yt-dlp)"
+            self.error = "yt-dlp absent (relancez install.sh)"
+            self.status = f"Erreur : {self.error}"
             return
+        self._last_bytes = None             # premier relevé = point de départ (reprise)
         self.status = "Analyse…"
         ffmpeg = shutil.which("ffmpeg")
         audio = self.quality == "Audio MP3"
@@ -531,7 +536,8 @@ def make_download(url, folder, parts=8, quality="Meilleure", browser="Aucun",
 def entry_from_task(t):
     """Entrée de session (format JSON) décrivant la tâche."""
     e = {"url": t.url, "folder": t.folder, "parts": t.parts, "name": t.name, "headers": t.headers,
-         "added": datetime.fromtimestamp(t.added).isoformat(timespec="seconds"), "want": t.want}
+         "added": datetime.fromtimestamp(t.added).isoformat(timespec="seconds"),
+         "want": "stop" if t.finished else t.want}     # un fichier terminé puis déplacé n'est pas repris
     if isinstance(t, VideoDownload):
         e.update(kind="video", quality=t.quality, browser=t.browser, fmt=t.fmt, stem=t.stem)
     return e
