@@ -96,6 +96,25 @@ version `.deb` ou `.rpm` du navigateur. Firefox en Snap (Ubuntu) fonctionne.
 - Pour les vidéos, PyDM essaie d'abord **sans vos cookies** (YouTube refuse souvent
   une session connectée), puis avec, seulement si c'est nécessaire.
 
+## 5. File d'attente et planification
+
+- **Télécharger** démarre tout de suite, dans la limite des téléchargements
+  simultanés (3 par défaut) : au-delà, la ligne affiche « En file » et part dès
+  qu'une place se libère. **Plus tard** met dans la **file planifiée**.
+- La file planifiée démarre pendant la **plage horaire** (par exemple 01:00–07:00)
+  ou avec ⏱ → **Démarrer la file** ; à la fin de la plage, ses téléchargements se
+  mettent en pause et reprennent la nuit suivante.
+- **Forcer** (⏩ ou clic droit) démarre immédiatement, sans limite ni plage.
+- Clic droit → **Monter / Descendre / En tête de file** (Ctrl+↑, Ctrl+↓,
+  Ctrl+Origine) : l'ordre de la liste est l'ordre de la file.
+- **Limite de vitesse** : le bouton « Limite … Mo/s » de la barre d'état l'active
+  ou la désactive d'un clic ; elle s'applique aussitôt à tous les téléchargements.
+- ⏱ → **Planification…** : simultanés, limite, plage horaire et action quand la file
+  est terminée (rien, quitter PyDM, mise en veille, extinction, avec 60 s pour
+  annuler).
+- Limite connue : quand yt-dlp passe la main à ffmpeg (certains flux en direct),
+  la limite de vitesse ne s'applique pas.
+
 ## Limites
 - Les vidéos protégées par DRM (Netflix, Disney+, Prime Video, Spotify…) ne
   peuvent pas être téléchargées.

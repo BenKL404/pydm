@@ -23,6 +23,7 @@ from .adddialog import AddDialog
 from .delegates import ProgressDelegate
 from .links import extract_urls
 from .model import DownloadFilter, DownloadModel
+from .schedule import EndActionDialog, ScheduleDialog, run_end_action
 from .widgets import DetailPanel, SpeedSparkline
 
 WIDTHS = (300, 80, 190, 90, 80, 170, 120)
@@ -36,6 +37,7 @@ class MainWindow(QMainWindow):
         self.dialogs = []               # fenêtres d'ajout ouvertes
         self.scheduler = Scheduler()
         self.clock = datetime.now       # remplaçable dans les tests
+        self.end_delay = 60             # secondes avant l'action finale
         self.overrides = dict(overrides or {})     # options -o / -n : pour cette session seulement
         self.factory = factory
         self.inbox = queue.Queue()      # messages de l'extension (thread IPC)
@@ -347,10 +349,37 @@ class MainWindow(QMainWindow):
         self.tick()
 
     def open_schedule(self):
-        """Fenêtre Planification (voir schedule.py)."""
+        dlg = ScheduleDialog(self.settings, self)
+        if dlg.exec() != ScheduleDialog.Accepted:
+            return
+        self.settings.update(dlg.result_settings())
+        store.save_settings(self.settings)
+        self.apply_queue_settings()
+        self.tick()
 
     def queue_finished(self):
-        """La file planifiée est terminée (action finale : voir la fenêtre Planification)."""
+        """La file planifiée est terminée : action finale choisie dans Planification."""
+        action = self.settings["end_action"]
+        if action == "none":
+            return
+        if self.end_delay <= 0:
+            self._end_action(action)
+            return
+        dlg = EndActionDialog(action, self.end_delay, self)
+        dlg.confirmed.connect(lambda: self._end_action(action))
+        dlg.show()
+        dlg.raise_()
+        if self.tray and not self.isVisible():
+            self.tray.notify("La file est terminée", dlg.label.text(), on_click=dlg.raise_)
+
+    def _end_action(self, action):
+        if action == "quit":
+            self.quit_app()
+            return
+        self.save_session()
+        error = run_end_action(action)
+        if error:
+            QMessageBox.warning(self, "PyDM", error)
 
     def _enqueue(self, url, folder, parts, quality, browser, headers, filename, kind,
                  fmt=None, stem=None, want="now", route=None):

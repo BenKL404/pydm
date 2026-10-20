@@ -34,6 +34,11 @@ over a video, and PyDM takes over.
 - **Sorted by type, like IDM**: files go to `Vidéos`, `Musique`, `Documents`,
   `Images`, `Archives` or `Programmes` under the download folder; each folder
   can be renamed or moved to another disk in Preferences, or sorting turned off.
+- **Queue and scheduler, like IDM**: N downloads at a time (3 by default),
+  "Later" adds to a scheduled queue run in a time window (e.g. 01:00–07:00) or
+  on demand, "Force" to jump the queue, reordering, a global speed limit
+  toggled from the status bar, and an action when the queue is done (quit,
+  suspend, power off, with 60 s to cancel).
 - **A modern, dense interface** (Qt 6): real progress bars, light and dark
   themes that follow the system, sortable columns, search, a detail panel,
   right-click menu, keyboard shortcuts and drag-and-drop of links.

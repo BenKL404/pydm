@@ -38,6 +38,10 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 - The Tkinter interface.
 
+- Download queue: limit of simultaneous downloads, "Later" scheduled queue with a
+  daily time window or manual start, "Force", reordering (Ctrl+↑/↓), global speed
+  limit toggled from the status bar, and an end-of-queue action (quit, suspend,
+  power off) with a 60 s countdown.
 - Files are sorted into sub-folders by type (videos, music, documents, images,
   archives, programs), configurable in Preferences; new "image" file type.
 
