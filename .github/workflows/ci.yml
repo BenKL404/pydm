@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, windows]     # TEMPORAIRE : branche windows le temps du portage
     tags: ["v*"]
   pull_request:
 
@@ -58,6 +58,21 @@ jobs:
           export HOME="$(mktemp -d)" PYDM_SKIP_PIP=1
           sh install.sh
           "$HOME/.local/bin/pydm" --help
+
+  windows-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install PySide6 and yt-dlp
+        run: python -m pip install PySide6 yt-dlp
+      - name: Tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONUTF8: "1"
+        run: python -m unittest discover -v -s tests -t .
 
   appimage:
     needs: [python, shell, install, extension]     # jamais de version publiée si un test échoue
