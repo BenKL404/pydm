@@ -1,6 +1,9 @@
 import unittest
 
-from pydm.util import safe_filename
+import os
+from unittest import mock
+
+from pydm.util import expand_path, safe_filename
 
 W = dict(windows=True)
 
@@ -26,6 +29,14 @@ class SafeFilenameTest(unittest.TestCase):
     def test_tronque_puis_nettoye(self):
         name = safe_filename("é" * 80 + ". ", **W)
         self.assertEqual(name, "é" * 80)
+
+
+
+class ExpandPathTest(unittest.TestCase):
+    def test_tilde_et_separateurs(self):
+        with mock.patch.dict(os.environ, {"HOME": "/h", "USERPROFILE": "/h"}):
+            self.assertEqual(expand_path("~/a/../b//c"), os.path.join(os.path.normpath("/h"), "b", "c"))
+        self.assertEqual(expand_path("/srv/dl/"), os.path.normpath("/srv/dl"))
 
 
 if __name__ == "__main__":

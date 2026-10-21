@@ -19,7 +19,7 @@ from ..analyze import analyze
 from ..cache import AnalysisCache
 from ..scheduler import LIMITER, Scheduler, parse_hhmm
 from ..filetypes import _BY_EXT
-from ..util import human, unique_path
+from ..util import expand_path, human, unique_path
 
 MEDIA_EXTS = {ext for ext, cat in _BY_EXT.items() if cat in ("video", "music")}
 
@@ -370,7 +370,7 @@ class MainWindow(QMainWindow):
             return
         opts = {**self.settings, **self.overrides}
         for url in urls:
-            self._enqueue(url, os.path.expanduser(opts["folder"]), opts["parts"], opts["quality"],
+            self._enqueue(url, expand_path(opts["folder"]), opts["parts"], opts["quality"],
                           opts["browser"], headers, filename, kind, route=self._route(opts))
 
     @staticmethod
@@ -510,7 +510,7 @@ class MainWindow(QMainWindow):
     def _accept(self, entries, start):
         opts = {**self.settings, **self.overrides}
         for e in entries:
-            folder = os.path.expanduser(e["folder"])
+            folder = expand_path(e["folder"])
             try:
                 os.makedirs(folder, exist_ok=True)
             except OSError as err:
@@ -908,7 +908,7 @@ class MainWindow(QMainWindow):
 
     def open_folder(self):
         sel = self.selected_tasks()
-        folder = sel[0].folder if sel else os.path.expanduser(self.settings["folder"])
+        folder = sel[0].folder if sel else expand_path(self.settings["folder"])
         if not os.path.isdir(folder):
             QMessageBox.warning(self, "PyDM", "Fichier introuvable")
             return

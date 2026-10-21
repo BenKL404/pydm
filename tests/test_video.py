@@ -66,7 +66,8 @@ class VideoCookiesTest(unittest.TestCase):
         self.assertEqual([c["cookiefile"] is not None for c in calls], [False, True])
         second = calls[1]
         self.assertNotIn("Cookie", second["opts"]["http_headers"])
-        self.assertEqual(second["mode"], 0o600)
+        if os.name != "nt":                         # Windows : droits hérités du dossier temporaire
+            self.assertEqual(second["mode"], 0o600)
         lines = [l.split("\t") for l in second["content"].splitlines() if l and not l.startswith("#")]
         self.assertEqual([(l[0], l[5], l[6]) for l in lines],
                          [(".youtube.com", "SID", "1"), (".youtube.com", "PREF", "f6=8")])

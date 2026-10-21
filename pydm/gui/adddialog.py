@@ -20,7 +20,7 @@ from ..cache import video_key
 from ..engine import UA
 from ..engine import QUALITIES
 from ..filetypes import category
-from ..util import human, human_time, safe_filename
+from ..util import expand_path, human, human_time, safe_filename
 from . import theme
 
 TIMEOUT = 30
@@ -356,7 +356,7 @@ class AddDialog(QDialog):
 
     def _finish(self, start):
         tasks = self.collect()
-        for folder in dict.fromkeys(os.path.expanduser(t["folder"]) for t in tasks):
+        for folder in dict.fromkeys(expand_path(t["folder"]) for t in tasks):
             try:
                 os.makedirs(folder, exist_ok=True)
             except OSError as e:

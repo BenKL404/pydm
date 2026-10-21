@@ -22,7 +22,7 @@ import time
 from . import store
 from .engine import BROWSERS, QUALITIES, Download, make_download
 from .ipc import instance_running
-from .util import human, human_time
+from .util import expand_path, human, human_time
 
 
 def run_cli(url, folder, parts, quality="Meilleure", browser="Aucun"):
@@ -105,7 +105,7 @@ def main(argv=None):
     a = p.parse_args(argv)
     settings = store.load_settings()
     if a.url:
-        sys.exit(run_cli(a.url, a.output or os.path.expanduser(settings["folder"]), a.connections or settings["parts"],
+        sys.exit(run_cli(a.url, a.output or expand_path(settings["folder"]), a.connections or settings["parts"],
                          a.qualite, a.cookies))
     if instance_running():      # déjà ouvert : on affiche la fenêtre existante
         return

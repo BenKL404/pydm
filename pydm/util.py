@@ -7,6 +7,11 @@ import re
 RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
 
 
+def expand_path(path):
+    """Chemin saisi par l'utilisateur : « ~ » développé, séparateurs du système (pas de « C:\\x/y »)."""
+    return os.path.normpath(os.path.expanduser(path))
+
+
 def safe_filename(name, windows=(os.name == "nt"), fallback="telechargement"):
     """Nom de fichier valide sur le système : sous Windows, sans caractères interdits ni nom réservé."""
     name = (name or "").strip()
