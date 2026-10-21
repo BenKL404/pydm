@@ -7,6 +7,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-21
+
 ### Changed
 
 - Video button in the browser: a discreet round button with the PyDM logo that
@@ -91,6 +93,7 @@ First public version.
   interception, video button, context menu, cookie and referrer forwarding.
 - Native messaging host and per-user installer.
 
-[Unreleased]: https://github.com/BenKL404/pydm/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/BenKL404/pydm/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/BenKL404/pydm/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/BenKL404/pydm/releases/tag/v1.1.0
 [1.0.0]: https://github.com/BenKL404/pydm/commit/fac5bdb
