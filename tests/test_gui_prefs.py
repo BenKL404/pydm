@@ -46,7 +46,7 @@ class PrefsTest(unittest.TestCase):
     def test_retrait(self):
         from unittest import mock
         from PySide6.QtWidgets import QMessageBox
-        dlg = self.prefs.PreferencesDialog(dict(self.store.DEFAULTS), tray_available=False,
+        dlg = self.prefs.PreferencesDialog(dict(self.store.DEFAULTS, autostart=True), tray_available=False,
                                            appimage="/x/PyDM-1.3.0.AppImage")
         with mock.patch("pydm.gui.prefs.QMessageBox.question", return_value=QMessageBox.No), \
                 mock.patch("pydm.integrate.remove") as remove:
@@ -59,6 +59,7 @@ class PrefsTest(unittest.TestCase):
             dlg.remove_btn.click()
         remove.assert_called_once_with()
         self.assertTrue(dlg.removed)
+        self.assertFalse(dlg.settings["autostart"])
         self.assertIn("PyDM-1.3.0.AppImage", info.call_args.args[2])
 
     def test_dialogue_preferences(self):

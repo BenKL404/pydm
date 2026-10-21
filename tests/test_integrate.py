@@ -132,5 +132,53 @@ class IntegrateTest(unittest.TestCase):
         self.assertEqual(integrate.desktop_quote('/a"$`\\'), '"/a\\\\"\\\\$\\\\`\\\\\\\\"')
 
 
+    def autostart(self):
+        return self.path(".config", "autostart", "pydm.desktop")
+
+    def test_autostart_suit_appimage_deplacee(self):
+        integrate.integrate(self.appimage, home=self.home)
+        integrate.set_autostart(True, home=self.home, launcher=self.appimage)
+        moved = os.path.join(self.tmp.name, "PyDM-1.4.0.AppImage")
+        os.rename(self.appimage, moved)
+        integrate.integrate(moved, home=self.home)
+        with open(self.autostart()) as f:
+            self.assertIn("Exec=" + integrate.desktop_quote(moved) + " --minimized", f.read())
+
+    def test_autostart_absent_pas_cree(self):
+        integrate.integrate(self.appimage, home=self.home)
+        self.assertFalse(os.path.exists(self.autostart()))
+
+    def test_remove_retire_autostart(self):
+        integrate.integrate(self.appimage, home=self.home)
+        integrate.set_autostart(True, home=self.home, launcher=self.appimage)
+        integrate.remove(home=self.home)
+        self.assertFalse(os.path.exists(self.autostart()))
+        integrate.set_autostart(True, home=self.home, launcher=self.path(".local", "bin", "pydm"))   # install.sh
+        integrate.remove(home=self.home)
+        self.assertTrue(os.path.exists(self.autostart()))
+
+    def test_derniere_installation_gagne(self):
+        integrate.integrate(self.appimage, home=self.home)
+        firefox = self.path(".mozilla/native-messaging-hosts/com.pydm.host.json")
+        with open(firefox, "w") as f:                                        # install.sh relancé ensuite
+            json.dump({"name": "com.pydm.host", "path": self.path(".local/share/pydm/pydm_host.py")}, f)
+        with open(self.path(".local/share/applications/pydm.desktop"), "w") as f:
+            f.write('[Desktop Entry]\nExec="' + self.path(".local/bin/pydm") + '"\n')
+        self.assertEqual(integrate.integrate(self.appimage, home=self.home), "same")
+        self.assertEqual(self.manifest(".mozilla/native-messaging-hosts")["path"], self.wrapper())
+        self.assertIn(integrate.desktop_quote(self.appimage), self.read(".local/share/applications/pydm.desktop"))
+
+    def test_mode_extraction_sans_fuse(self):
+        with mock.patch.dict(os.environ, {"APPIMAGE_EXTRACT_AND_RUN": "1"}):
+            integrate.integrate(self.appimage, home=self.home)
+            integrate.set_autostart(True, home=self.home, launcher=self.appimage)
+        with open(self.wrapper()) as f:
+            self.assertEqual(f.read().strip().splitlines()[-1],
+                             f'APPIMAGE_EXTRACT_AND_RUN=1 exec {shlex.quote(self.appimage)} --native-host "$@"')
+        exec_line = "Exec=env APPIMAGE_EXTRACT_AND_RUN=1 " + integrate.desktop_quote(self.appimage)
+        self.assertIn(exec_line + "\n", self.read(".local/share/applications/pydm.desktop"))
+        with open(self.autostart()) as f:
+            self.assertIn(exec_line + " --minimized", f.read())
+
 if __name__ == "__main__":
     unittest.main()

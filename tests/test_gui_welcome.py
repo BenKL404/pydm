@@ -60,5 +60,21 @@ class WelcomeTest(unittest.TestCase):
                          [QUrl(self.welcome.RELEASES_URL), QUrl(self.welcome.CHROME_URL)])
 
 
+    def test_chemins_qt_du_paquet_oublies(self):
+        import os
+        import sys
+        from PySide6.QtCore import QCoreApplication
+        env = {"QT_PLUGIN_PATH": "/tmp/.mount_PyDM/qt/plugins", "QML2_IMPORT_PATH": "/tmp/.mount_PyDM/qml",
+               "HOME": "/h"}
+        with mock.patch.dict(os.environ, env), mock.patch.object(sys, "frozen", True, create=True), \
+                mock.patch.object(QCoreApplication, "libraryPaths", wraps=QCoreApplication.libraryPaths) as paths:
+            self.gui_app.forget_bundle_qt_paths()
+            self.assertNotIn("QT_PLUGIN_PATH", os.environ)
+            self.assertNotIn("QML2_IMPORT_PATH", os.environ)
+        paths.assert_called()
+        with mock.patch.dict(os.environ, env):                  # hors programme figé : rien ne change
+            self.gui_app.forget_bundle_qt_paths()
+            self.assertIn("QT_PLUGIN_PATH", os.environ)
+
 if __name__ == "__main__":
     unittest.main()

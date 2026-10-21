@@ -60,7 +60,12 @@ def folder(value):
     return os.path.abspath(os.path.expanduser(value))
 
 
-def prepare_frozen_env(environ, bundle_dir):
+# certificats racine selon la distribution (OpenSSL du paquet cherche ceux de Debian/Ubuntu)
+CA_FILES = ("/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt", "/etc/ssl/ca-bundle.pem",
+            "/etc/pki/tls/cacert.pem", "/etc/ssl/cert.pem")
+
+
+def prepare_frozen_env(environ, bundle_dir, ca_files=CA_FILES):
     """Programme figé : ffmpeg livré dans le dossier des binaires (sys._MEIPASS), et bibliothèques du système pour les
     programmes lancés (navigateur, gestionnaire de fichiers…) au lieu de celles du paquet."""
     environ["PATH"] = os.pathsep.join(p for p in (bundle_dir, environ.get("PATH")) if p)
@@ -69,6 +74,10 @@ def prepare_frozen_env(environ, bundle_dir):
         environ["LD_LIBRARY_PATH"] = original
     else:
         environ.pop("LD_LIBRARY_PATH", None)
+    if not environ.get("SSL_CERT_FILE") and not environ.get("SSL_CERT_DIR"):
+        found = next((f for f in ca_files if os.path.isfile(f)), None)
+        if found:
+            environ["SSL_CERT_FILE"] = found
 
 
 def main(argv=None):

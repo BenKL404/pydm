@@ -13,29 +13,8 @@ from . import theme
 THEMES = (("system", "Système"), ("light", "Clair"), ("dark", "Sombre"))
 CATEGORY_LABELS = (("video", "Vidéos"), ("music", "Musique"), ("document", "Documents"), ("image", "Images"),
                    ("archive", "Archives"), ("program", "Programmes"))
-AUTOSTART = """[Desktop Entry]
-Type=Application
-Name=PyDM
-Comment=Gestionnaire de téléchargement multi-connexions
-Exec={launcher} --minimized
-Icon=pydm
-Terminal=false
-X-GNOME-Autostart-enabled=true
-"""
-
-
 def set_autostart(enabled, home=None):
-    home = home or os.path.expanduser("~")
-    path = os.path.join(home, ".config", "autostart", "pydm.desktop")
-    if enabled:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as f:
-            f.write(AUTOSTART.format(launcher=integrate.desktop_quote(integrate.launcher(home))))
-    else:
-        try:
-            os.remove(path)
-        except FileNotFoundError:
-            pass
+    integrate.set_autostart(enabled, home)
 
 
 class PreferencesDialog(QDialog):
@@ -120,6 +99,7 @@ class PreferencesDialog(QDialog):
         if answer != QMessageBox.Yes:
             return
         integrate.remove()
+        self.settings["autostart"] = False          # l'entrée de démarrage a été retirée avec le reste
         QMessageBox.information(self, "PyDM", "PyDM a été retiré du menu et du navigateur. Supprimez le fichier "
                                 f"{os.path.basename(self.appimage)} pour terminer.")
         self.removed = True

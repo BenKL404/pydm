@@ -18,7 +18,9 @@ lancement, PyDM s'ajoute au menu des applications et se déclare auprès des
 navigateurs. Si vous déplacez le fichier, ouvrez-le simplement de nouveau. Pour
 désinstaller : « Retirer PyDM du système » dans les Préférences, puis supprimez
 le fichier. Fonctionne sur les distributions de 2022 et plus récentes (x86_64).
-S'il ne démarre pas faute de FUSE : `./PyDM-*.AppImage --appimage-extract-and-run`.
+S'il ne démarre pas faute de FUSE, lancez-le une fois avec
+`APPIMAGE_EXTRACT_AND_RUN=1 ./PyDM-*.AppImage` : le menu et la liaison avec le
+navigateur gardent ensuite ce mode.
 
 ### Depuis les sources
 

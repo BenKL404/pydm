@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Kokou Bernard KPEDZI
 """Démarrage de l'interface Qt : application, thème, fenêtre, liaison avec l'extension."""
+import os
 import sys
 
+from PySide6.QtCore import QCoreApplication
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
 from .. import integrate
@@ -12,6 +14,16 @@ from . import theme
 from .tray import Tray
 from .welcome import WelcomeDialog
 from .window import MainWindow
+
+
+def forget_bundle_qt_paths():
+    """Programme figé : Qt a lu ses chemins de modules ; on les retire de l'environnement pour que les
+    programmes ouverts (gestionnaire de fichiers, lecteur…) utilisent leur propre Qt."""
+    if not getattr(sys, "frozen", False):
+        return
+    QCoreApplication.libraryPaths()         # mémorisés avant le retrait des variables
+    for name in ("QT_PLUGIN_PATH", "QML2_IMPORT_PATH"):
+        os.environ.pop(name, None)
 
 
 def integrate_system(window):
@@ -32,6 +44,7 @@ def integrate_system(window):
 
 def run(settings, default_dir=None, parts=None, minimized=False):
     app = QApplication.instance() or QApplication(sys.argv[:1])
+    forget_bundle_qt_paths()
     app.setApplicationName("PyDM")
     app.setApplicationDisplayName("PyDM")
     app.setDesktopFileName("pydm")

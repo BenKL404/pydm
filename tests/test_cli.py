@@ -62,5 +62,23 @@ class CliTest(unittest.TestCase):
         prepare_frozen_env(env, "/app/usr/bin/_internal")
         self.assertNotIn("LD_LIBRARY_PATH", env)
 
+    def test_certificats_du_systeme(self):
+        from pydm.cli import prepare_frozen_env
+        with tempfile.TemporaryDirectory() as tmp:
+            absent, present = os.path.join(tmp, "absent.crt"), os.path.join(tmp, "ca-bundle.crt")
+            open(present, "w").close()
+            env = {"PATH": "/usr/bin"}
+            prepare_frozen_env(env, "/b", ca_files=(absent, present))
+            self.assertEqual(env["SSL_CERT_FILE"], present)
+            env = {"PATH": "/usr/bin", "SSL_CERT_FILE": "/mien.pem"}         # choix de l'utilisateur gardé
+            prepare_frozen_env(env, "/b", ca_files=(present,))
+            self.assertEqual(env["SSL_CERT_FILE"], "/mien.pem")
+            env = {"PATH": "/usr/bin", "SSL_CERT_DIR": "/certs"}
+            prepare_frozen_env(env, "/b", ca_files=(present,))
+            self.assertNotIn("SSL_CERT_FILE", env)
+            env = {"PATH": "/usr/bin"}
+            prepare_frozen_env(env, "/b", ca_files=(absent,))
+            self.assertNotIn("SSL_CERT_FILE", env)
+
 if __name__ == "__main__":
     unittest.main()

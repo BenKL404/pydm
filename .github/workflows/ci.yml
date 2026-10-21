@@ -60,6 +60,7 @@ jobs:
           "$HOME/.local/bin/pydm" --help
 
   appimage:
+    needs: [python, shell, install, extension]     # jamais de version publiée si un test échoue
     runs-on: ubuntu-22.04
     permissions:
       contents: write

@@ -73,7 +73,8 @@ launch PyDM adds itself to the applications menu and registers with the
 browsers. If you move the file, just open it again. To uninstall, use
 "Remove PyDM from the system" in Preferences, then delete the file. Works on
 distributions from 2022 onwards (x86_64). If it does not start because FUSE is
-missing, run `./PyDM-*.AppImage --appimage-extract-and-run`.
+missing, run it once as `APPIMAGE_EXTRACT_AND_RUN=1 ./PyDM-*.AppImage`: the menu
+entry and the browser link then keep that mode.
 
 ### From source
 
