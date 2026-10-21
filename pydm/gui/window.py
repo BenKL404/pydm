@@ -801,8 +801,11 @@ class MainWindow(QMainWindow):
 
     def open_preferences(self):
         from .prefs import PreferencesDialog, set_autostart
-        dlg = PreferencesDialog(self.settings, self.tray is not None, self)
+        from .. import integrate
+        dlg = PreferencesDialog(self.settings, self.tray is not None, self, appimage=integrate.appimage_path())
         if dlg.exec() != PreferencesDialog.Accepted:
+            if dlg.removed:
+                self.quit_app()
             return
         new = dlg.result_settings()
         if new["autostart"] != self.settings["autostart"]:

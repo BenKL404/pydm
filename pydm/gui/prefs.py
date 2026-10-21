@@ -4,7 +4,8 @@
 import os
 
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
-                               QHBoxLayout, QLineEdit, QSpinBox, QToolButton, QWidget)
+                               QHBoxLayout, QLineEdit, QMessageBox, QPushButton, QSpinBox, QToolButton,
+                               QWidget)
 
 from .. import integrate, store
 from . import theme
@@ -38,8 +39,11 @@ def set_autostart(enabled, home=None):
 
 
 class PreferencesDialog(QDialog):
-    def __init__(self, settings, tray_available, parent=None):
+    def __init__(self, settings, tray_available, parent=None, appimage=None):
         super().__init__(parent)
+        self.appimage = appimage
+        self.removed = False
+        self.remove_btn = None
         self.settings = settings
         self.setWindowTitle("Préférences")
         self.setWindowIcon(theme.logo())
@@ -99,10 +103,27 @@ class PreferencesDialog(QDialog):
                     self.autostart_box):
             form.addRow("", box)
 
+        if appimage:
+            self.remove_btn = QPushButton("Retirer PyDM du système…")
+            self.remove_btn.setToolTip("Retire PyDM du menu et des navigateurs (réglages et fichiers conservés)")
+            self.remove_btn.clicked.connect(self._remove)
+            form.addRow("", self.remove_btn)
+
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         form.addRow(buttons)
+
+    def _remove(self):
+        answer = QMessageBox.question(self, "PyDM", "Retirer PyDM du menu et des navigateurs ?\n"
+                                      "Vos réglages et vos fichiers sont conservés.")
+        if answer != QMessageBox.Yes:
+            return
+        integrate.remove()
+        QMessageBox.information(self, "PyDM", "PyDM a été retiré du menu et du navigateur. Supprimez le fichier "
+                                f"{os.path.basename(self.appimage)} pour terminer.")
+        self.removed = True
+        self.reject()
 
     def _browse(self):
         path = QFileDialog.getExistingDirectory(self, "Dossier de téléchargement", self.folder_edit.text())

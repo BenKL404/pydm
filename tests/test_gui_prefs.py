@@ -38,6 +38,29 @@ class PrefsTest(unittest.TestCase):
                 content = f.read()
         self.assertIn("Exec=" + integrate.desktop_quote(appimage) + " --minimized", content)
 
+    def test_bouton_retrait_absent(self):
+        dlg = self.prefs.PreferencesDialog(dict(self.store.DEFAULTS), tray_available=False)
+        self.assertIsNone(dlg.remove_btn)
+        self.assertFalse(dlg.removed)
+
+    def test_retrait(self):
+        from unittest import mock
+        from PySide6.QtWidgets import QMessageBox
+        dlg = self.prefs.PreferencesDialog(dict(self.store.DEFAULTS), tray_available=False,
+                                           appimage="/x/PyDM-1.3.0.AppImage")
+        with mock.patch("pydm.gui.prefs.QMessageBox.question", return_value=QMessageBox.No), \
+                mock.patch("pydm.integrate.remove") as remove:
+            dlg.remove_btn.click()
+        remove.assert_not_called()
+        self.assertFalse(dlg.removed)
+        with mock.patch("pydm.gui.prefs.QMessageBox.question", return_value=QMessageBox.Yes), \
+                mock.patch("pydm.gui.prefs.QMessageBox.information") as info, \
+                mock.patch("pydm.integrate.remove") as remove:
+            dlg.remove_btn.click()
+        remove.assert_called_once_with()
+        self.assertTrue(dlg.removed)
+        self.assertIn("PyDM-1.3.0.AppImage", info.call_args.args[2])
+
     def test_dialogue_preferences(self):
         settings = dict(self.store.DEFAULTS)
         dlg = self.prefs.PreferencesDialog(settings, tray_available=False)

@@ -5,11 +5,29 @@ import sys
 
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
+from .. import integrate
 from ..engine import clean_stale_cookie_files
 from ..ipc import start_ipc
 from . import theme
 from .tray import Tray
+from .welcome import WelcomeDialog
 from .window import MainWindow
+
+
+def integrate_system(window):
+    """Depuis l'AppImage : relie PyDM au menu et aux navigateurs (message la première fois)."""
+    appimage = integrate.appimage_path()
+    if not appimage:
+        return None
+    try:
+        status = integrate.integrate(appimage)
+    except OSError as e:
+        window.statusBar().showMessage(f"Intégration au système impossible : {e}")
+        return None
+    if status == "new":
+        window.welcome = WelcomeDialog(window)
+        window.welcome.open()
+    return status
 
 
 def run(settings, default_dir=None, parts=None, minimized=False):
@@ -31,6 +49,7 @@ def run(settings, default_dir=None, parts=None, minimized=False):
         start_ipc(window.handle_message)
     except OSError as e:
         window.statusBar().showMessage(f"Extension du navigateur indisponible : {e}")
+    integrate_system(window)
     if not (minimized and window.tray):
         window.show()
     return app.exec()
