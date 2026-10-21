@@ -50,5 +50,59 @@ class IpcTest(unittest.TestCase):
             self.assertFalse(importlib.reload(pydm.ipc).instance_running())
         importlib.reload(pydm.ipc)
 
+    def test_poignee_de_main(self):
+        import threading
+        from multiprocessing import AuthenticationError
+        from multiprocessing.connection import Pipe
+        for client_key, ok in ((b"k" * 32, True), (b"x" * 32, False)):
+            a, b = Pipe()
+            result = {}
+
+            def server():
+                try:
+                    self.ipc.server_handshake(a, b"k" * 32)
+                    result["server"] = True
+                except (AuthenticationError, EOFError, OSError):
+                    result["server"] = False
+                    a.close()
+            t = threading.Thread(target=server)
+            t.start()
+            if ok:
+                self.ipc.client_handshake(b, client_key)
+            else:
+                with self.assertRaises((AuthenticationError, EOFError, OSError)):
+                    self.ipc.client_handshake(b, client_key)
+                b.close()
+            t.join(5)
+            self.assertEqual(result["server"], ok)
+
+    def test_cle_privee(self):
+        self.assertIsNone(self.ipc.load_key(create=False))
+        key = self.ipc.load_key(create=True)
+        self.assertEqual(len(key), 32)
+        self.assertEqual(self.ipc.load_key(create=False), key)
+        self.assertEqual(self.ipc.load_key(create=True), key)
+
+    def test_nom_utilisateur_windows(self):
+        with mock.patch.dict(os.environ, {"USERNAME": "Élodie", "USER": "msys", "LOGNAME": "msys"}):
+            self.assertEqual(self.ipc.current_user(windows=True), "Élodie")
+
+    def test_verrou_instance(self):
+        class Kernel32:
+            def __init__(self, err):
+                self.err, self.names = err, []
+
+            def CreateMutexW(self, attrs, owner, name):
+                self.names.append(name)
+                return 42
+
+            def GetLastError(self):
+                return self.err
+        free, taken = Kernel32(0), Kernel32(183)            # 183 : ERROR_ALREADY_EXISTS
+        self.assertTrue(self.ipc.acquire_instance_lock(kernel32=free))
+        self.assertFalse(self.ipc.acquire_instance_lock(kernel32=taken))
+        self.assertRegex(free.names[0], r"^PyDM-instance-[0-9a-f]{8}$")      # dossier de test : verrou à part
+        self.assertEqual(self.ipc.mutex_name(None), "PyDM-instance")
+
 if __name__ == "__main__":
     unittest.main()

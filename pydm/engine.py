@@ -97,7 +97,7 @@ class Download(_Task):
         self.folder = folder
         self.route = route      # catégorie → dossier, appliqué quand le nom est connu (nouveau téléchargement)
         self.headers = dict(headers or {})      # Cookie / Referer transmis par le navigateur
-        self.name_hint = os.path.basename(name_hint) if name_hint else None
+        self.name_hint = safe_filename(os.path.basename(name_hint), fallback="") or None if name_hint else None
         self.parts = max(1, int(parts))
         self.name = name
         self.size = None

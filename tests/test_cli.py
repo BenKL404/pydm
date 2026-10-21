@@ -86,5 +86,16 @@ class CliTest(unittest.TestCase):
             cli.main(["--remove-integration"])
         remove.assert_called_once_with()
 
+    def test_deuxieme_instance_windows(self):
+        from pydm import cli
+        running = iter([False, False, True])
+        with mock.patch.object(cli, "WINDOWS", True), \
+                mock.patch("pydm.ipc.acquire_instance_lock", return_value=False), \
+                mock.patch.object(cli, "instance_running", side_effect=lambda: next(running)), \
+                mock.patch("pydm.ipc.ipc_send") as send, mock.patch.object(cli.time, "sleep"), \
+                mock.patch("pydm.store.load_settings", return_value={"folder": "/x", "parts": 8}):
+            cli.main([])
+        send.assert_called_once_with({"action": "show"})
+
 if __name__ == "__main__":
     unittest.main()

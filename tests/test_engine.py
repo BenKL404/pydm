@@ -2,6 +2,7 @@ import os
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 from pydm.engine import Download
 from tests.httpserver import serve
@@ -162,6 +163,15 @@ class DownloadTest(unittest.TestCase):
         wait(d)
         self.assertEqual(d.name, "résumé été.pdf")
 
+
+
+class NameHintTest(unittest.TestCase):
+    def test_nom_suggere_nettoye(self):
+        from pydm import engine, util
+        windows = lambda n, **k: util.safe_filename(n, windows=True, **k)   # noqa: E731
+        with mock.patch.object(engine, "safe_filename", side_effect=windows):
+            d = engine.Download("https://a.fr/x", tempfile.gettempdir(), name_hint="dossier/a:b*.zip")
+        self.assertEqual(d.name_hint, "a_b_.zip")
 
 if __name__ == "__main__":
     unittest.main()

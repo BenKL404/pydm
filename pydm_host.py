@@ -31,7 +31,17 @@ SOCKET_PATH = os.path.join(CONFIG_DIR, "pydm.sock")
 LAUNCHER = os.path.join(os.path.expanduser("~"), ".local", "bin", "pydm")
 YTDLP = os.path.join(os.path.expanduser("~"), ".local", "share", "pydm", "venv", "lib", "python*",
                      "site-packages", "yt_dlp")     # PyDM tourne dans son environnement, pas le Python système
-RETRIES = int(os.environ.get("PYDM_HOST_RETRIES") or 60)
+KEY_FILE = os.path.join(CONFIG_DIR, "ipc.key")
+BREAKAWAY = 0x01000000          # CREATE_BREAKAWAY_FROM_JOB : Firefox tue le « job » de l'hôte à sa sortie
+DETACHED = 0x00000008 | 0x00000200      # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+
+
+def default_retries(windows=WINDOWS):
+    """Essais de 0,25 s : 15 s, ou 45 s sous Windows (premier lancement lent, antivirus)."""
+    return 180 if windows else 60
+
+
+RETRIES = int(os.environ.get("PYDM_HOST_RETRIES") or default_retries())
 
 
 def pipe_address(config_dir_env, user):
@@ -42,15 +52,31 @@ def pipe_address(config_dir_env, user):
     return "\\\\.\\pipe\\" + name
 
 
+def current_user():
+    """Copie de pydm.ipc.current_user."""
+    if WINDOWS and os.environ.get("USERNAME"):
+        return os.environ["USERNAME"]
+    try:
+        return getpass.getuser()
+    except Exception:  # noqa: BLE001
+        return "user"
+
+
 def _send(msg):
-    """Un échange avec PyDM ; FileNotFoundError ou ConnectionRefusedError s'il n'est pas ouvert."""
+    """Un échange avec PyDM ; FileNotFoundError ou ConnectionRefusedError s'il n'est pas ouvert,
+    TimeoutError s'il démarre, AuthenticationError si le canal n'est pas le sien."""
     if WINDOWS:
-        from multiprocessing.connection import Client
+        from multiprocessing.connection import Client, answer_challenge, deliver_challenge
         try:
-            user = getpass.getuser()
-        except Exception:  # noqa: BLE001
-            user = "user"
-        with Client(pipe_address(_ENV_DIR, user), family="AF_PIPE") as conn:
+            with open(KEY_FILE, "rb") as f:
+                key = f.read()
+        except OSError:
+            raise FileNotFoundError("PyDM n'a jamais été lancé") from None
+        with Client(pipe_address(_ENV_DIR, current_user()), family="AF_PIPE") as conn:
+            if not conn.poll(5):
+                raise TimeoutError("PyDM ne répond pas")
+            answer_challenge(conn, key)             # authentification dans les deux sens (pydm.ipc)
+            deliver_challenge(conn, key)
             conn.send_bytes(json.dumps(msg).encode())
             if not conn.poll(5):
                 raise TimeoutError("PyDM ne répond pas")
@@ -70,11 +96,16 @@ def launch_command():
     return [appimage or LAUNCHER, "--minimized"]
 
 
-def _detached():
-    """Options de lancement : PyDM survit à l'hôte, sans fenêtre console sous Windows."""
-    if WINDOWS:
-        return {"creationflags": 0x00000008 | 0x00000200}    # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
-    return {"start_new_session": True}
+def _spawn(command):
+    """Lance PyDM détaché : il survit à l'hôte (et au « job » du navigateur sous Windows)."""
+    quiet = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if not WINDOWS:
+        subprocess.Popen(command, start_new_session=True, **quiet)
+        return
+    try:
+        subprocess.Popen(command, creationflags=DETACHED | BREAKAWAY, **quiet)
+    except PermissionError:     # job sans sortie autorisée : lancement simple
+        subprocess.Popen(command, creationflags=DETACHED, **quiet)
 
 
 def read_message():
@@ -94,7 +125,10 @@ def send_message(obj):
 def forward(msg):
     launched = False
     command = launch_command()
-    packaged = bool(os.environ.get("APPIMAGE")) or (WINDOWS and getattr(sys, "frozen", False))
+    from multiprocessing import AuthenticationError
+    windows_app = WINDOWS and getattr(sys, "frozen", False)
+    appimage = bool(os.environ.get("APPIMAGE")) and not windows_app
+    packaged = appimage or windows_app
     for _ in range(RETRIES):
         try:
             return _send(msg)
@@ -103,13 +137,17 @@ def forward(msg):
                 return {"ok": False, "error": "PyDM fermé"}
             if not launched:
                 if not os.path.exists(command[0]):
-                    return {"ok": False, "error": "PyDM introuvable : réinstallez PyDM" if packaged
+                    return {"ok": False, "error": "PyDM introuvable : relancez l'AppImage" if appimage
+                            else "PyDM introuvable : réinstallez PyDM" if windows_app
                             else "PyDM n'est pas installé (lancez install.sh)"}
-                subprocess.Popen(command, **_detached(),
-                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                 stderr=subprocess.DEVNULL)
+                _spawn(command)
                 launched = True
-            time.sleep(0.25)
+        except TimeoutError:                # PyDM démarre : on attend sans le relancer
+            if msg.get("action") == "prefetch":
+                return {"ok": False, "error": "PyDM occupé"}
+        except (AuthenticationError, PermissionError) as e:
+            return {"ok": False, "error": f"Connexion à PyDM refusée : {e}"}
+        time.sleep(0.25)
     return {"ok": False, "error": "PyDM ne démarre pas" + ("" if packaged else " (relancez install.sh)")}
 
 

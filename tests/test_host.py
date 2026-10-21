@@ -115,8 +115,56 @@ class HostTest(unittest.TestCase):
             pydm_host.forward({"action": "add", "url": "https://a.fr/x"})
         args, kwargs = popen.call_args
         self.assertEqual(args[0], ["C:\\Users\\Élodie Durand\\Programs\\PyDM\\pydm.exe", "--minimized"])
-        self.assertEqual(kwargs["creationflags"], 0x208)
+        self.assertEqual(kwargs["creationflags"], 0x01000208)     # + CREATE_BREAKAWAY_FROM_JOB (Firefox)
         self.assertNotIn("start_new_session", kwargs)
+
+    def _host(self):
+        sys.path.insert(0, os.path.dirname(HOST))
+        try:
+            import pydm_host
+        finally:
+            sys.path.pop(0)
+        return pydm_host
+
+    def test_job_sans_sortie_autorisee(self):
+        pydm_host = self._host()
+        with mock.patch.object(pydm_host, "WINDOWS", True), mock.patch.object(sys, "frozen", True, create=True), \
+                mock.patch.object(sys, "executable", "C:\\P\\pydm-host.exe"), mock.patch.object(pydm_host, "RETRIES", 1), \
+                mock.patch.object(pydm_host, "_send", side_effect=FileNotFoundError), \
+                mock.patch.object(pydm_host.os.path, "exists", return_value=True), \
+                mock.patch.object(pydm_host.subprocess, "Popen", side_effect=[PermissionError(5, "job"), mock.Mock()]) as popen, \
+                mock.patch.object(pydm_host.time, "sleep"):
+            pydm_host.forward({"action": "add", "url": "https://a.fr/x"})
+        self.assertEqual([c.kwargs["creationflags"] for c in popen.call_args_list], [0x01000208, 0x208])
+
+    def test_message_appimage_inchange(self):
+        pydm_host = self._host()
+        with mock.patch.dict(os.environ, {"APPIMAGE": "/nulle/part/PyDM.AppImage"}), \
+                mock.patch.object(pydm_host, "WINDOWS", False), \
+                mock.patch.object(pydm_host, "_send", side_effect=FileNotFoundError):
+            reply = pydm_host.forward({"action": "add", "url": "https://a.fr/x"})
+        self.assertEqual(reply["error"], "PyDM introuvable : relancez l'AppImage")
+
+    def test_attente_plus_longue_sous_windows(self):
+        pydm_host = self._host()
+        self.assertEqual(pydm_host.default_retries(windows=False), 60)
+        self.assertEqual(pydm_host.default_retries(windows=True), 180)       # 45 s : premier lancement lent
+
+    def test_attend_pydm_qui_demarre(self):
+        pydm_host = self._host()                    # canal créé mais PyDM pas encore prêt : on attend
+        with mock.patch.object(pydm_host, "_send", side_effect=[TimeoutError(), {"ok": True}]), \
+                mock.patch.object(pydm_host.subprocess, "Popen") as popen, mock.patch.object(pydm_host.time, "sleep"):
+            self.assertEqual(pydm_host.forward({"action": "add", "url": "https://a.fr/x"}), {"ok": True})
+        popen.assert_not_called()
+
+    def test_canal_d_un_autre(self):
+        pydm_host = self._host()                    # canal occupé par un autre compte : refus clair
+        from multiprocessing import AuthenticationError
+        for error in (AuthenticationError("clé"), PermissionError(5, "refus")):
+            with mock.patch.object(pydm_host, "_send", side_effect=error):
+                reply = pydm_host.forward({"action": "add", "url": "https://a.fr/x"})
+            self.assertFalse(reply["ok"])
+            self.assertIn("refusée", reply["error"])
 
 if __name__ == "__main__":
     unittest.main()

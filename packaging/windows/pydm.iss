@@ -27,6 +27,8 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
+; verrou pris par PyDM au démarrage (pydm.ipc.mutex_name) : installer et désinstaller demandent de le fermer
+AppMutex=PyDM-instance
 RestartApplications=no
 OutputBaseFilename=PyDM-{#AppVersion}-Setup
 SetupIconFile={#AppIcon}

@@ -19,10 +19,12 @@ import os
 import sys
 import time
 
-from . import store
+from . import ipc, store
 from .engine import BROWSERS, QUALITIES, Download, make_download
 from .ipc import instance_running
 from .util import expand_path, human, human_time
+
+WINDOWS = os.name == "nt"
 
 
 def run_cli(url, folder, parts, quality="Meilleure", browser="Aucun"):
@@ -107,7 +109,13 @@ def main(argv=None):
     if a.url:
         sys.exit(run_cli(a.url, a.output or expand_path(settings["folder"]), a.connections or settings["parts"],
                          a.qualite, a.cookies))
-    if instance_running():      # déjà ouvert : on affiche la fenêtre existante
+    if WINDOWS and not ipc.acquire_instance_lock():     # un autre PyDM démarre ou tourne déjà
+        for _ in range(80):                     # 20 s : le temps qu'il ouvre son canal
+            if instance_running():
+                ipc.ipc_send({"action": "show"})
+                return
+            time.sleep(0.25)
+    elif instance_running():    # déjà ouvert : on affiche la fenêtre existante
         return
     try:
         from .gui import app

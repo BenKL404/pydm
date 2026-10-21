@@ -60,7 +60,7 @@ Write-Host "== Hôte natif : ping, PyDM ouvert"
 $r = Send-Native @{ action = "ping" }
 if (-not $r.ok -or -not $r.ytdlp) { throw "ping : $($r | ConvertTo-Json -Compress)" }
 
-Write-Host "== Hôte natif : PyDM fermé, l'hôte le relance et transmet le téléchargement"
+Write-Host "== Hôte natif lancé comme par Firefox (job), PyDM fermé : relance, téléchargement, survie"
 Stop-Process -Id $gui.Id -Force
 Get-Process pydm -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Seconds 2
@@ -76,12 +76,27 @@ Start-Sleep -Seconds 2
 $cfg = Join-Path $env:APPDATA "PyDM"
 New-Item -ItemType Directory -Force -Path $cfg | Out-Null
 @{ confirm_add = $false; show_progress = $false; folder = $dl; sort_by_type = $false } | ConvertTo-Json | Set-Content (Join-Path $cfg "settings.json") -Encoding utf8
-$r = Send-Native @{ action = "add"; url = "http://127.0.0.1:8765/essai.bin"; kind = "file" }
-if (-not $r.ok) { throw "add : $($r | ConvertTo-Json -Compress)" }
+$reply = Join-Path $env:TEMP "pydm-e2e-reply.json"
+$msg = @{ action = "add"; url = "http://127.0.0.1:8765/essai.bin"; kind = "file" } | ConvertTo-Json -Compress
+$j = Start-Process pwsh -ArgumentList "-NoProfile", "-File", (Join-Path $PSScriptRoot "e2e_windows_job.ps1"),
+    "-Host_", (Join-Path $App "pydm-host.exe"), "-Message", $msg, "-Out", $reply -PassThru -Wait -NoNewWindow
+if ($j.ExitCode) { throw "Lanceur en job : code $($j.ExitCode)" }
+$r = Get-Content $reply -Raw | ConvertFrom-Json
+if (-not $r.ok) { throw "add : $(Get-Content $reply -Raw)" }
+Start-Sleep -Seconds 3
+if (-not (Get-Process pydm -ErrorAction SilentlyContinue)) { throw "PyDM tué avec le job du navigateur" }
+Write-Host "   PyDM a survécu au job du navigateur"
 $target = Join-Path $dl "essai.bin"
 Wait-Until { (Test-Path $target) -and -not (Test-Path "$target.part") -and ((Get-Item $target).Length -eq 3MB) } 90 "téléchargement de essai.bin"
 Write-Host "   téléchargement OK (3 Mo)"
 Stop-Process -Id $http.Id -Force
+
+Write-Host "== Désinstallation refusée tant que PyDM tourne"
+if (-not (Get-Process pydm -ErrorAction SilentlyContinue)) { throw "PyDM devrait encore tourner" }
+Start-Process (Join-Path $App "unins000.exe") -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait | Out-Null
+Start-Sleep -Seconds 10
+if (-not (Test-Path (Join-Path $App "pydm.exe")) -or -not (Test-Path $MozKey)) { throw "Désinstallé alors que PyDM tournait" }
+Write-Host "   refusée, rien de supprimé"
 
 Write-Host "== Désinstallation silencieuse"
 Get-Process pydm -ErrorAction SilentlyContinue | Stop-Process -Force
