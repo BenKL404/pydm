@@ -7,6 +7,19 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- One-file install: `PyDM-<version>-x86_64.AppImage` bundles Python, Qt, yt-dlp
+  and ffmpeg. On launch it adds itself to the applications menu and registers
+  with the browsers (moving the file is repaired on the next launch); a welcome
+  message links to the extension. "Remove PyDM from the system" in Preferences
+  undoes it.
+- `pydm --native-host`: the same program serves as the browser's native host.
+
+### Changed
+
+- "Start PyDM with the session" starts the AppImage when PyDM runs from one.
+
 ## [1.2.0] - 2026-10-21
 
 ### Changed

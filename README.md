@@ -59,14 +59,28 @@ over a video, and PyDM takes over.
 
 The interface is in French.
 
-## Requirements
-
-- Linux
-- Python 3.9 or newer with the `venv` module (`python3-venv` on Debian/Ubuntu)
-- An Internet connection during installation (PySide6 and yt-dlp are downloaded)
-- Optional: [ffmpeg](https://ffmpeg.org/) for best video quality and MP3
-
 ## Installation
+
+### AppImage (recommended)
+
+1. Download `PyDM-<version>-x86_64.AppImage` from the
+   [latest release](https://github.com/BenKL404/pydm/releases/latest).
+2. Make it executable (file properties → "Allow executing", or
+   `chmod +x PyDM-*.AppImage`) and open it.
+
+Nothing else to install: Python, Qt, yt-dlp and ffmpeg are inside. On first
+launch PyDM adds itself to the applications menu and registers with the
+browsers. If you move the file, just open it again. To uninstall, use
+"Remove PyDM from the system" in Preferences, then delete the file. Works on
+distributions from 2022 onwards (x86_64). If it does not start because FUSE is
+missing, run `./PyDM-*.AppImage --appimage-extract-and-run`.
+
+### From source
+
+Requires Python 3.9 or newer with the `venv` module (`python3-venv` on
+Debian/Ubuntu), an Internet connection during installation (PySide6 and yt-dlp
+are downloaded) and, optionally, [ffmpeg](https://ffmpeg.org/) for best video
+quality and MP3.
 
 ```bash
 sudo apt install python3-venv ffmpeg      # Fedora: sudo dnf install ffmpeg
@@ -143,7 +157,8 @@ if needed.
 - DRM-protected videos (Netflix, Disney+, Prime Video, Spotify…) cannot be downloaded.
 - Downloads produced by a form (POST) are re-requested as a plain link and may
   fail. Turn interception off from the PyDM icon in that case.
-- Keep yt-dlp up to date by running `./install.sh` again: sites change often.
+- Keep yt-dlp up to date (sites change often): download the latest AppImage, or
+  run `./install.sh` again for a source install.
 
 ## Contributing
 

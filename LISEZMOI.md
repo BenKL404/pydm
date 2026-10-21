@@ -6,6 +6,22 @@
 
 ## 1. Installer PyDM
 
+### AppImage (recommandé)
+
+1. Téléchargez `PyDM-<version>-x86_64.AppImage` depuis la
+   [dernière version](https://github.com/BenKL404/pydm/releases/latest).
+2. Rendez-le exécutable (propriétés du fichier → « Autoriser l'exécution », ou
+   `chmod +x PyDM-*.AppImage`), puis ouvrez-le.
+
+Rien d'autre à installer : Python, Qt, yt-dlp et ffmpeg sont inclus. Au premier
+lancement, PyDM s'ajoute au menu des applications et se déclare auprès des
+navigateurs. Si vous déplacez le fichier, ouvrez-le simplement de nouveau. Pour
+désinstaller : « Retirer PyDM du système » dans les Préférences, puis supprimez
+le fichier. Fonctionne sur les distributions de 2022 et plus récentes (x86_64).
+S'il ne démarre pas faute de FUSE : `./PyDM-*.AppImage --appimage-extract-and-run`.
+
+### Depuis les sources
+
 Il faut Python 3.9 ou plus récent avec le module `venv`, et une connexion Internet
 pendant l'installation (PySide6 et yt-dlp sont téléchargés).
 
@@ -135,7 +151,8 @@ version `.deb` ou `.rpm` du navigateur. Firefox en Snap (Ubuntu) fonctionne.
   peuvent pas être téléchargées.
 - Les téléchargements produits par un formulaire (POST) sont redemandés par
   simple lien et peuvent échouer. Désactivez alors l'interception dans l'icône PyDM.
-- Mettez yt-dlp à jour régulièrement en relançant `./install.sh` : les sites changent souvent.
+- Les sites changent souvent : gardez yt-dlp à jour en téléchargeant la dernière
+  AppImage (ou en relançant `./install.sh` pour une installation depuis les sources).
 
 ## Contribuer
 
