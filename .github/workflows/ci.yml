@@ -74,6 +74,49 @@ jobs:
           PYTHONUTF8: "1"
         run: python -m unittest discover -v -s tests -t .
 
+  windows:
+    needs: [windows-tests, python, shell, extension]     # jamais de version publiée si un test échoue
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: packaging/cache
+          key: windows-${{ hashFiles('packaging/build-windows.ps1') }}
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue) -and
+              -not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+          }
+      - name: Build
+        shell: pwsh
+        run: ./packaging/build-windows.ps1
+      - name: End-to-end test (install, browser host, download, uninstall)
+        shell: pwsh
+        run: ./tests/e2e_windows.ps1 -Setup (Get-Item dist/PyDM-*-Setup.exe).FullName
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            dist/PyDM-*-Setup.exe
+            dist/PyDM-*-windows-portable.zip
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --title "PyDM ${GITHUB_REF_NAME#v}" --notes "See CHANGELOG.md."
+          gh release upload "$GITHUB_REF_NAME" dist/PyDM-*-Setup.exe dist/PyDM-*-windows-portable.zip --clobber
+
   appimage:
     needs: [python, shell, install, extension]     # jamais de version publiée si un test échoue
     runs-on: ubuntu-22.04

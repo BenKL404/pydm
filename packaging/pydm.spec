@@ -36,4 +36,11 @@ a = Analysis(                               # noqa: F821
 pyz = PYZ(a.pure)                           # noqa: F821
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="pydm", console=False,  # noqa: F821
           icon=os.path.join(ROOT, "pydm", "gui", "icons", "png", "pydm-256.png"))
-coll = COLLECT(exe, a.binaries, a.datas, name="pydm")    # noqa: F821
+parts = [exe, a.binaries, a.datas]
+if sys.platform == "win32":
+    # Windows : l'hôte natif doit être un programme console (entrée et sortie standard pour le
+    # navigateur), alors que pydm.exe est fenêtré. Les deux partagent _internal.
+    h = Analysis([os.path.join(ROOT, "pydm_host.py")], pathex=[ROOT], excludes=["tkinter"])   # noqa: F821
+    host = EXE(PYZ(h.pure), h.scripts, [], exclude_binaries=True, name="pydm-host", console=True)  # noqa: F821
+    parts += [host, h.binaries, h.datas]
+coll = COLLECT(*parts, name="pydm")    # noqa: F821
