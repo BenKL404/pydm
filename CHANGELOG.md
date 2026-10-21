@@ -7,6 +7,18 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Video button in the browser: a discreet round button with the PyDM logo that
+  expands to "Télécharger avec PyDM" on hover, with sending, success and error
+  states (extension 1.1.0).
+- HTTP 403 refusals now explain the likely cause (link tied to the browser or
+  its IP address, VPN or proxy, or expired link).
+
+### Fixed
+
+- "Resume" is no longer shown as possible on a task in error.
+
 ## [1.1.0] - 2026-10-20
 
 ### Added

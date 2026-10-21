@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "PyDM – Intégration navigateur",
   "short_name": "PyDM",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Envoie vos téléchargements et les vidéos des pages à PyDM, comme IDM.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAz5xVMNuR5LC5OnYxsJDuArtPLiXoM1JucJWYpNxdLY6Qj/q6x9/uiSNLds5wfNuM1jvXnX+fLttUTInPqH7FIl1h6gNaeKiZrE9y0IEZjfgyNvolBqKGTsU0Uu7yUEz11Fkp0JAK1sSX8a4Rziz9joDmmQsplmuBa7mKnDUK5kSb4W1OESIH2ELrI3Psq3VISfGB8oaPnTSv7D8I1Jqt4SaZghxa4r8B7A7kkQ8tMZJUFKj1IT0eEPiSQoYOJk+OpBmsQdVBrTAEsjHpqzN67pCbbWGtinI0PqMRHYZc7MSUv1k9xhwDnWRKZTEBDp0Jpq/Xna7Zjd+BL/pDWW9zVwIDAQAB",
   "icons": {
