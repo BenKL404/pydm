@@ -6,7 +6,7 @@ import os
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
                                QHBoxLayout, QLineEdit, QSpinBox, QToolButton, QWidget)
 
-from .. import store
+from .. import integrate, store
 from . import theme
 
 THEMES = (("system", "Système"), ("light", "Clair"), ("dark", "Sombre"))
@@ -16,7 +16,7 @@ AUTOSTART = """[Desktop Entry]
 Type=Application
 Name=PyDM
 Comment=Gestionnaire de téléchargement multi-connexions
-Exec="{launcher}" --minimized
+Exec={launcher} --minimized
 Icon=pydm
 Terminal=false
 X-GNOME-Autostart-enabled=true
@@ -29,7 +29,7 @@ def set_autostart(enabled, home=None):
     if enabled:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w") as f:
-            f.write(AUTOSTART.format(launcher=os.path.join(home, ".local", "bin", "pydm")))
+            f.write(AUTOSTART.format(launcher=integrate.desktop_quote(integrate.launcher(home))))
     else:
         try:
             os.remove(path)

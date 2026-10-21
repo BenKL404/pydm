@@ -25,6 +25,19 @@ class PrefsTest(unittest.TestCase):
             self.assertFalse(os.path.exists(path))
             self.prefs.set_autostart(False, home=home)      # déjà absent : pas d'erreur
 
+    def test_autostart_appimage(self):
+        from unittest import mock
+        from pydm import integrate
+        with tempfile.TemporaryDirectory() as home:
+            appimage = os.path.join(home, "Mes apps", "PyDM.AppImage")
+            os.makedirs(os.path.dirname(appimage))
+            open(appimage, "w").close()
+            with mock.patch.dict(os.environ, {"APPIMAGE": appimage}):
+                self.prefs.set_autostart(True, home=home)
+            with open(os.path.join(home, ".config", "autostart", "pydm.desktop")) as f:
+                content = f.read()
+        self.assertIn("Exec=" + integrate.desktop_quote(appimage) + " --minimized", content)
+
     def test_dialogue_preferences(self):
         settings = dict(self.store.DEFAULTS)
         dlg = self.prefs.PreferencesDialog(settings, tray_available=False)
