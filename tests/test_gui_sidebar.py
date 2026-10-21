@@ -90,7 +90,7 @@ class SidebarWindowTest(unittest.TestCase):
             self.w.open_category_folder("image")
         target = os.path.join(self.cfg, "Images")
         self.assertTrue(os.path.isdir(target))
-        self.assertEqual(open_url.call_args.args[0].toLocalFile(), target)
+        self.assertEqual(os.path.normpath(open_url.call_args.args[0].toLocalFile()), target)
 
 
 if __name__ == "__main__":

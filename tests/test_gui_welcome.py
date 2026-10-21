@@ -21,12 +21,12 @@ class WelcomeTest(unittest.TestCase):
         self.window.close()
 
     def run_integration(self, status=None, error=None):
-        with mock.patch("pydm.integrate.appimage_path", return_value="/x/PyDM.AppImage"), \
+        with mock.patch("pydm.integrate.installed_app", return_value="/x/PyDM.AppImage"), \
                 mock.patch("pydm.integrate.integrate", return_value=status, side_effect=error) as integ:
             return self.gui_app.integrate_system(self.window), integ
 
     def test_hors_appimage(self):
-        with mock.patch("pydm.integrate.appimage_path", return_value=None), \
+        with mock.patch("pydm.integrate.installed_app", return_value=None), \
                 mock.patch("pydm.integrate.integrate") as integ:
             self.assertIsNone(self.gui_app.integrate_system(self.window))
         integ.assert_not_called()

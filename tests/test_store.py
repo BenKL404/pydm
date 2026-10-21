@@ -26,8 +26,9 @@ class SettingsTest(unittest.TestCase):
         s = dict(store.DEFAULTS, parts=4, theme="dark")
         store.save_settings(s, self.dir)
         self.assertEqual(store.load_settings(self.dir), s)
-        mode = os.stat(os.path.join(self.dir, "settings.json")).st_mode
-        self.assertEqual(stat.S_IMODE(mode), 0o600)
+        if os.name != "nt":                         # Windows : droits hérités du dossier de l'utilisateur
+            mode = os.stat(os.path.join(self.dir, "settings.json")).st_mode
+            self.assertEqual(stat.S_IMODE(mode), 0o600)
 
     def test_type_invalide(self):
         self.write("settings.json", json.dumps({"parts": "8", "notify": 1, "theme": "rose"}))
@@ -85,8 +86,8 @@ class FolderForTest(unittest.TestCase):
 
     def test_sous_dossiers(self):
         s = self.settings()
-        self.assertEqual(store.folder_for("video", s), "/dl/Vidéos")
-        self.assertEqual(store.folder_for("image", s), "/dl/Images")
+        self.assertEqual(store.folder_for("video", s), os.path.join("/dl", "Vidéos"))
+        self.assertEqual(store.folder_for("image", s), os.path.join("/dl", "Images"))
         self.assertEqual(store.folder_for("other", s), "/dl")
 
     def test_rangement_desactive(self):
@@ -100,9 +101,9 @@ class FolderForTest(unittest.TestCase):
 
     def test_valeur_abimee(self):
         s = self.settings(category_dirs={"video": 3, "music": ""})
-        self.assertEqual(store.folder_for("video", s), "/dl/Vidéos")
-        self.assertEqual(store.folder_for("music", s), "/dl/Musique")
-        self.assertEqual(store.folder_for("document", s), "/dl/Documents")
+        self.assertEqual(store.folder_for("video", s), os.path.join("/dl", "Vidéos"))
+        self.assertEqual(store.folder_for("music", s), os.path.join("/dl", "Musique"))
+        self.assertEqual(store.folder_for("document", s), os.path.join("/dl", "Documents"))
 
 
 class EntryTest(unittest.TestCase):

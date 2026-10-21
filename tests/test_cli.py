@@ -56,7 +56,7 @@ class CliTest(unittest.TestCase):
         from pydm.cli import prepare_frozen_env
         env = {"PATH": "/usr/bin", "LD_LIBRARY_PATH": "/tmp/_MEI/lib", "LD_LIBRARY_PATH_ORIG": "/opt/lib"}
         prepare_frozen_env(env, "/app/usr/bin/_internal")      # dossier des binaires livrés (sys._MEIPASS)
-        self.assertEqual(env["PATH"], "/app/usr/bin/_internal:/usr/bin")
+        self.assertEqual(env["PATH"], "/app/usr/bin/_internal" + os.pathsep + "/usr/bin")
         self.assertEqual(env["LD_LIBRARY_PATH"], "/opt/lib")
         env = {"PATH": "/usr/bin", "LD_LIBRARY_PATH": "/tmp/_MEI/lib"}
         prepare_frozen_env(env, "/app/usr/bin/_internal")

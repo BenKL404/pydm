@@ -22,6 +22,7 @@ class HostTest(unittest.TestCase):
     def test_ping(self):
         self.assertTrue(call_host({"action": "ping"})["ok"])
 
+    @unittest.skipIf(os.name == "nt", "lanceur POSIX (install.sh, AppImage)")
     def test_ytdlp_de_l_environnement(self):
         with tempfile.TemporaryDirectory() as home:
             env = dict(os.environ, HOME=home, PYDM_CONFIG_DIR=os.path.join(home, "cfg"))
@@ -29,6 +30,7 @@ class HostTest(unittest.TestCase):
             os.makedirs(os.path.join(home, ".local/share/pydm/venv/lib/python3.12/site-packages/yt_dlp"))
             self.assertTrue(call_host({"action": "ping"}, env)["ytdlp"])
 
+    @unittest.skipIf(os.name == "nt", "lanceur POSIX (install.sh, AppImage)")
     def test_non_installe(self):
         with tempfile.TemporaryDirectory() as home:
             env = dict(os.environ, HOME=home, PYDM_CONFIG_DIR=os.path.join(home, "cfg"))
@@ -39,6 +41,7 @@ class HostTest(unittest.TestCase):
         self.assertIn("install.sh", reply["error"])
 
 
+    @unittest.skipIf(os.name == "nt", "lanceur POSIX (install.sh, AppImage)")
     def test_prefetch_ne_lance_pas(self):
         with tempfile.TemporaryDirectory() as home:
             bindir = os.path.join(home, ".local", "bin")
@@ -57,6 +60,7 @@ class HostTest(unittest.TestCase):
         self.assertFalse(reply["ok"])
 
 
+    @unittest.skipIf(os.name == "nt", "lanceur POSIX (install.sh, AppImage)")
     def test_lancement_appimage(self):
         with tempfile.TemporaryDirectory() as home:
             mark = os.path.join(home, "lance")

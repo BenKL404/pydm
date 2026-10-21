@@ -101,7 +101,7 @@ class VideoCookiesTest(unittest.TestCase):
         self.assertIsNone(calls[1]["cookiefile"])         # le navigateur choisi remplace ceux de l'extension
         self.assertNotIn("Cookie", calls[1]["opts"]["http_headers"])
 
-    @unittest.skipIf(os.geteuid() == 0, "root peut écrire partout")
+    @unittest.skipIf(os.name == "nt" or getattr(os, "geteuid", lambda: -1)() == 0, "droits POSIX (root ou Windows)")
     def test_dossier_impossible_a_creer(self):
         FakeYoutubeDL.calls = []
         FakeYoutubeDL.refuse = staticmethod(lambda opts: None)

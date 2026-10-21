@@ -144,7 +144,7 @@ class DownloadTest(unittest.TestCase):
         self.assertEqual(d.status, "Terminé")
         self.assertEqual(self.read(d), self.data)
 
-    @unittest.skipIf(os.geteuid() == 0, "root peut écrire partout")
+    @unittest.skipIf(os.name == "nt" or getattr(os, "geteuid", lambda: -1)() == 0, "droits POSIX (root ou Windows)")
     def test_dossier_non_inscriptible(self):
         folder = os.path.join(self.dir, "lecture-seule")
         os.mkdir(folder, 0o500)

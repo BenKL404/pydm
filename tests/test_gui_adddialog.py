@@ -233,7 +233,9 @@ class AddDialogFixesTest(DialogCase):
         from PySide6.QtWidgets import QMessageBox
         dlg = self.dialog(result())
         self.wait_filled(dlg)
-        dlg.folder_edit.setText("/proc/pydm-impossible")
+        blocker = os.path.join(self.cfg, "fichier")          # un dossier sous un fichier : impossible partout
+        open(blocker, "w").close()
+        dlg.folder_edit.setText(os.path.join(blocker, "pydm-impossible"))
         dlg.never_box.setChecked(True)
         with mock.patch.object(QMessageBox, "warning") as warn:
             dlg.download_btn.click()
@@ -297,7 +299,7 @@ class SortDialogTest(DialogCase):
         self.assertEqual((tasks[urls[2]]["folder"], tasks[urls[2]]["auto_folder"]), (self.cfg, True))
         dlg.videos_box.setCurrentText("Audio MP3")
         dlg.folder_edit.setText("/srv/dl")
-        self.assertEqual(dlg.collect()[0]["folder"], "/srv/dl/Musique")
+        self.assertEqual(dlg.collect()[0]["folder"], os.path.join("/srv/dl", "Musique"))
         self.assertEqual(dlg.folder_label.text(), "Dossier principal")
 
 

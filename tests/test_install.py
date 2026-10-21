@@ -15,6 +15,7 @@ def have_venv():
 
 
 @unittest.skipUnless(have_venv(), "python3 -m venv indisponible")
+@unittest.skipIf(os.name == "nt", "install.sh (Linux)")
 class InstallTest(unittest.TestCase):
     def test_install_home_temporaire(self):
         with tempfile.TemporaryDirectory() as home:

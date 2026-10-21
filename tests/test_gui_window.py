@@ -344,7 +344,7 @@ class AddFlowTest(WindowCase):
         self.assertEqual([t.url for t in w.model.tasks()], ["https://a.fr/2.zip"])
 
     def test_dossier_tilde(self):
-        with tempfile.TemporaryDirectory() as home, mock.patch.dict(os.environ, {"HOME": home}):
+        with tempfile.TemporaryDirectory() as home, mock.patch.dict(os.environ, {"HOME": home, "USERPROFILE": home}):
             w = self.window()
             w.add_urls(["https://a.fr/x.iso"])
             self.accept(w, [entry(folder="~/pydm-test")])

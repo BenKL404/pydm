@@ -11,6 +11,7 @@ from pydm import integrate
 CHROME_ID = "feloklndigmnjlmffbddgcdfigpnbcba"
 
 
+@unittest.skipIf(os.name == "nt", "intégration de l'AppImage (Linux)")
 class IntegrateTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -105,7 +106,7 @@ class IntegrateTest(unittest.TestCase):
         self.assertTrue(os.path.exists(self.path(".config", "pydm", "settings.json")))
         integrate.remove(home=self.home)        # déjà retiré : pas d'erreur
 
-    @unittest.skipIf(os.geteuid() == 0, "root ignore les droits")
+    @unittest.skipIf(getattr(os, "geteuid", lambda: -1)() == 0, "root ignore les droits")
     def test_lecture_seule(self):
         os.makedirs(self.path(".local"))
         os.chmod(self.path(".local"), 0o500)

@@ -13,6 +13,7 @@ class PrefsTest(unittest.TestCase):
         from pydm.gui import prefs
         self.store, self.prefs = store, prefs
 
+    @unittest.skipIf(os.name == "nt", "fichier .desktop (Linux)")
     def test_autostart(self):
         with tempfile.TemporaryDirectory() as home:
             path = os.path.join(home, ".config", "autostart", "pydm.desktop")
@@ -25,6 +26,7 @@ class PrefsTest(unittest.TestCase):
             self.assertFalse(os.path.exists(path))
             self.prefs.set_autostart(False, home=home)      # déjà absent : pas d'erreur
 
+    @unittest.skipIf(os.name == "nt", "fichier .desktop (Linux)")
     def test_autostart_appimage(self):
         from unittest import mock
         from pydm import integrate
@@ -60,7 +62,8 @@ class PrefsTest(unittest.TestCase):
         remove.assert_called_once_with()
         self.assertTrue(dlg.removed)
         self.assertFalse(dlg.settings["autostart"])
-        self.assertIn("PyDM-1.3.0.AppImage", info.call_args.args[2])
+        expected = "Applications installées" if os.name == "nt" else "PyDM-1.3.0.AppImage"
+        self.assertIn(expected, info.call_args.args[2])
 
     def test_dialogue_preferences(self):
         settings = dict(self.store.DEFAULTS)
