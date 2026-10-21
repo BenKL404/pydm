@@ -497,8 +497,12 @@ def ytdlp_attempts(url, headers, browser):
                 pass
 
 
-def friendly_error(msg):
+def friendly_error(msg, windows=(os.name == "nt")):
     """Message lisible pour les refus courants (le détail technique reste à la fin)."""
+    low = msg.lower()
+    if windows and ("dpapi" in low or ("cookie" in low and "decrypt" in low)):
+        return ("Chrome chiffre ses cookies sous Windows d'une façon que PyDM ne peut pas lire : choisissez "
+                "Firefox dans « Cookies ». — " + msg)
     if "HTTP Error 403" in msg:
         return ("Accès refusé par le serveur (403) : le lien est peut-être lié au navigateur ou à son "
                 "adresse IP (VPN ou proxy ?), ou a expiré. Rechargez la page puis renvoyez le lien. — " + msg)

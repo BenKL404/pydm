@@ -54,6 +54,7 @@ class ScheduleDialogTest(unittest.TestCase):
         other.step()
         self.assertEqual(fired, [1])
 
+    @unittest.skipIf(os.name == "nt", "systemctl (Linux)")
     def test_systemctl_echec(self):
         run = self.schedule.run_end_action
         with mock.patch("subprocess.run", side_effect=FileNotFoundError("systemctl")):
@@ -120,6 +121,16 @@ class EndOfQueueTest(unittest.TestCase):
             w.open_schedule()
         self.assertEqual((w.scheduler.max_active, LIMITER.rate), (5, 102400))
 
+
+
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class EndCommandTest(unittest.TestCase):
+    def test_commandes_selon_le_systeme(self):
+        from pydm.gui.schedule import end_command
+        self.assertEqual(end_command("poweroff", windows=True), ["shutdown", "/s", "/t", "0"])
+        self.assertIsNone(end_command("suspend", windows=True))          # via powrprof.dll
+        self.assertEqual(end_command("poweroff", windows=False), ["systemctl", "poweroff"])
+        self.assertEqual(end_command("suspend", windows=False), ["systemctl", "suspend"])
 
 if __name__ == "__main__":
     unittest.main()

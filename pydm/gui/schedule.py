@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Kokou Bernard KPEDZI
 """Fenêtre Planification (file, limite, plage horaire) et action à la fin de la file."""
+import os
 import subprocess
 
 from PySide6.QtCore import QTime, QTimer, Signal
@@ -118,12 +119,28 @@ class EndActionDialog(QDialog):
         super().done(result)
 
 
+def end_command(action, windows=(os.name == "nt")):
+    """Commande de mise en veille ou d'extinction ; None : veille de Windows (powrprof.dll)."""
+    if not windows:
+        return ["systemctl", action]
+    return ["shutdown", "/s", "/t", "0"] if action == "poweroff" else None
+
+
 def run_end_action(action):
     """Mise en veille ou extinction ; renvoie un message d'erreur, ou None si tout va bien."""
+    command = end_command(action)
+    if command is None:
+        try:
+            import ctypes
+            if not ctypes.windll.powrprof.SetSuspendState(False, False, False):
+                return "Mise en veille refusée par Windows"
+        except (OSError, AttributeError) as e:
+            return f"Mise en veille impossible : {e}"
+        return None
     try:
-        r = subprocess.run(["systemctl", action], capture_output=True, text=True, timeout=30)
+        r = subprocess.run(command, capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.SubprocessError) as e:
-        return f"systemctl {action} impossible : {e}"
+        return f"{' '.join(command)} impossible : {e}"
     if r.returncode:
-        return (r.stderr or "").strip() or f"systemctl {action} a échoué (code {r.returncode})"
+        return (r.stderr or "").strip() or f"{' '.join(command)} a échoué (code {r.returncode})"
     return None

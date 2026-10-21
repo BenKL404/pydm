@@ -235,5 +235,14 @@ class AttemptsTest(unittest.TestCase):
                          [{}, {"cookiesfrombrowser": ("firefox",)}])
 
 
+
+class CookiesWindowsTest(unittest.TestCase):
+    def test_message_cookies_chrome(self):
+        from pydm.engine import friendly_error
+        msg = "ERROR: Failed to decrypt with DPAPI. See https://github.com/yt-dlp/yt-dlp/issues/10927"
+        self.assertTrue(friendly_error(msg, windows=True).startswith("Chrome chiffre ses cookies sous Windows"))
+        self.assertEqual(friendly_error(msg, windows=False), msg)
+        self.assertEqual(friendly_error("HTTP Error 404: Not Found", windows=True), "HTTP Error 404: Not Found")
+
 if __name__ == "__main__":
     unittest.main()
