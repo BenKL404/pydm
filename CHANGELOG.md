@@ -18,6 +18,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - "Resume" is no longer shown as possible on a task in error.
+- Video button missing on sites whose page is transformed or wider than the
+  window (extension 1.1.1).
 
 ## [1.1.0] - 2026-10-20
 

@@ -12,15 +12,17 @@
   });
 
   const LABEL = "Télécharger avec PyDM";
+  const WIDTH = 240;
 
   function build() {
     host = document.createElement("div");
-    host.style.cssText = "all:initial;position:fixed;z-index:2147483647;display:none;";
+    host.style.cssText = `all:initial;position:fixed;z-index:2147483647;display:none;width:${WIDTH}px;`
+      + "justify-content:flex-end;pointer-events:none;";
     const root = host.attachShadow({ mode: "closed" });
     // pastille au logo PyDM (anneau des connexions + flèche) qui s'allonge au survol
     root.innerHTML = `
       <style>
-        button { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 0;
+        button { all: unset; pointer-events: auto; box-sizing: border-box; display: flex; align-items: center; gap: 0;
                  height: 34px; padding: 0 6px; border-radius: 17px; cursor: pointer;
                  font: 600 13px/1 system-ui, -apple-system, "Segoe UI", sans-serif; color: #f8fafc;
                  background: rgba(15, 23, 42, .82); border: 1px solid rgba(148, 163, 184, .28);
@@ -69,9 +71,17 @@
     const parent = document.fullscreenElement || document.documentElement;
     if (host.parentNode !== parent) parent.appendChild(host);
     const r = video.getBoundingClientRect();
-    host.style.top = `${Math.max(4, r.top + 10)}px`;
-    host.style.right = `${Math.max(4, document.documentElement.clientWidth - r.right + 10)}px`;
-    host.style.display = "block";
+    // largeur fixe, pastille calée à droite : elle s'allonge vers la gauche sans changer d'ancrage
+    const x = Math.max(4, r.right - 10 - WIDTH), y = Math.max(4, r.top + 10);
+    host.style.left = `${x}px`;
+    host.style.top = `${y}px`;
+    host.style.display = "flex";
+    // une page qui transforme <html> ou le conteneur plein écran décale « fixed » : on corrige
+    const h = host.getBoundingClientRect();
+    if (Math.abs(h.left - x) > 1 || Math.abs(h.top - y) > 1) {
+      host.style.left = `${2 * x - h.left}px`;
+      host.style.top = `${2 * y - h.top}px`;
+    }
     current = video;
   }
 
