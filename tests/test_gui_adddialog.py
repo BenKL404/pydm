@@ -299,7 +299,7 @@ class SortDialogTest(DialogCase):
         self.assertEqual((tasks[urls[2]]["folder"], tasks[urls[2]]["auto_folder"]), (self.cfg, True))
         dlg.videos_box.setCurrentText("Audio MP3")
         dlg.folder_edit.setText("/srv/dl")
-        self.assertEqual(dlg.collect()[0]["folder"], os.path.join("/srv/dl", "Musique"))
+        self.assertEqual(dlg.collect()[0]["folder"], os.path.normpath("/srv/dl/Musique"))
         self.assertEqual(dlg.folder_label.text(), "Dossier principal")
 
 

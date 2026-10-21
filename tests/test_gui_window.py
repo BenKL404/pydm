@@ -117,7 +117,7 @@ class WindowTest(WindowCase):
         w = self.window(overrides={"folder": "/tmp/ailleurs", "parts": 3})
         w.add_urls(["https://a.fr/o.bin"])
         self.assertTrue(self.tick_until(w, lambda: self.factory.calls))
-        self.assertEqual((self.factory.calls[0]["folder"], self.factory.calls[0]["parts"]), ("/tmp/ailleurs", 3))
+        self.assertEqual((self.factory.calls[0]["folder"], self.factory.calls[0]["parts"]), (os.path.normpath("/tmp/ailleurs"), 3))
         w._set("quality", "720p")
         saved = store.load_settings(self.cfg)
         self.assertEqual((saved["folder"], saved["parts"], saved["quality"]), (self.cfg, 8, "720p"))

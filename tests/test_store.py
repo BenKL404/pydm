@@ -86,24 +86,24 @@ class FolderForTest(unittest.TestCase):
 
     def test_sous_dossiers(self):
         s = self.settings()
-        self.assertEqual(store.folder_for("video", s), os.path.join("/dl", "Vidéos"))
-        self.assertEqual(store.folder_for("image", s), os.path.join("/dl", "Images"))
-        self.assertEqual(store.folder_for("other", s), "/dl")
+        self.assertEqual(store.folder_for("video", s), os.path.normpath(os.path.join("/dl", "Vidéos")))
+        self.assertEqual(store.folder_for("image", s), os.path.normpath(os.path.join("/dl", "Images")))
+        self.assertEqual(store.folder_for("other", s), os.path.normpath("/dl"))
 
     def test_rangement_desactive(self):
-        self.assertEqual(store.folder_for("video", self.settings(sort_by_type=False)), "/dl")
+        self.assertEqual(store.folder_for("video", self.settings(sort_by_type=False)), os.path.normpath("/dl"))
 
     def test_chemin_absolu_et_tilde(self):
         s = self.settings(category_dirs=dict(store.DEFAULTS["category_dirs"], video="/media/disque/Films",
                                              music="~/Musique"))
-        self.assertEqual(store.folder_for("video", s), "/media/disque/Films")
-        self.assertEqual(store.folder_for("music", s), os.path.expanduser("~/Musique"))
+        self.assertEqual(store.folder_for("video", s), os.path.normpath("/media/disque/Films"))
+        self.assertEqual(store.folder_for("music", s), os.path.normpath(os.path.expanduser("~/Musique")))
 
     def test_valeur_abimee(self):
         s = self.settings(category_dirs={"video": 3, "music": ""})
-        self.assertEqual(store.folder_for("video", s), os.path.join("/dl", "Vidéos"))
-        self.assertEqual(store.folder_for("music", s), os.path.join("/dl", "Musique"))
-        self.assertEqual(store.folder_for("document", s), os.path.join("/dl", "Documents"))
+        self.assertEqual(store.folder_for("video", s), os.path.normpath(os.path.join("/dl", "Vidéos")))
+        self.assertEqual(store.folder_for("music", s), os.path.normpath(os.path.join("/dl", "Musique")))
+        self.assertEqual(store.folder_for("document", s), os.path.normpath(os.path.join("/dl", "Documents")))
 
 
 class EntryTest(unittest.TestCase):
