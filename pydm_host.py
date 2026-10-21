@@ -11,6 +11,7 @@ import getpass
 import glob
 import hashlib
 import json
+import ntpath
 import os
 import socket
 import struct
@@ -62,9 +63,18 @@ def _send(msg):
 
 
 def launch_command():
-    """PyDM depuis son AppImage (hôte lancé par l'AppImage), sinon le lanceur d'install.sh."""
+    """PyDM installé sous Windows (pydm.exe à côté de l'hôte), depuis son AppImage, sinon install.sh."""
+    if WINDOWS and getattr(sys, "frozen", False):
+        return [ntpath.join(ntpath.dirname(sys.executable), "pydm.exe"), "--minimized"]
     appimage = os.environ.get("APPIMAGE")
     return [appimage or LAUNCHER, "--minimized"]
+
+
+def _detached():
+    """Options de lancement : PyDM survit à l'hôte, sans fenêtre console sous Windows."""
+    if WINDOWS:
+        return {"creationflags": 0x00000008 | 0x00000200}    # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    return {"start_new_session": True}
 
 
 def read_message():
@@ -84,7 +94,7 @@ def send_message(obj):
 def forward(msg):
     launched = False
     command = launch_command()
-    appimage = bool(os.environ.get("APPIMAGE"))
+    packaged = bool(os.environ.get("APPIMAGE")) or (WINDOWS and getattr(sys, "frozen", False))
     for _ in range(RETRIES):
         try:
             return _send(msg)
@@ -93,14 +103,14 @@ def forward(msg):
                 return {"ok": False, "error": "PyDM fermé"}
             if not launched:
                 if not os.path.exists(command[0]):
-                    return {"ok": False, "error": "PyDM introuvable : relancez l'AppImage" if appimage
+                    return {"ok": False, "error": "PyDM introuvable : réinstallez PyDM" if packaged
                             else "PyDM n'est pas installé (lancez install.sh)"}
-                subprocess.Popen(command, start_new_session=True,
+                subprocess.Popen(command, **_detached(),
                                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                  stderr=subprocess.DEVNULL)
                 launched = True
             time.sleep(0.25)
-    return {"ok": False, "error": "PyDM ne démarre pas" + ("" if appimage else " (relancez install.sh)")}
+    return {"ok": False, "error": "PyDM ne démarre pas" + ("" if packaged else " (relancez install.sh)")}
 
 
 def main():

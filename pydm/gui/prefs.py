@@ -100,8 +100,11 @@ class PreferencesDialog(QDialog):
             return
         integrate.remove()
         self.settings["autostart"] = False          # l'entrée de démarrage a été retirée avec le reste
-        QMessageBox.information(self, "PyDM", "PyDM a été retiré du menu et du navigateur. Supprimez le fichier "
-                                f"{os.path.basename(self.appimage)} pour terminer.")
+        if os.name == "nt":
+            finish = "Désinstallez-le depuis « Applications installées » pour supprimer ses fichiers."
+        else:
+            finish = f"Supprimez le fichier {os.path.basename(self.appimage)} pour terminer."
+        QMessageBox.information(self, "PyDM", f"PyDM a été retiré du menu et du navigateur. {finish}")
         self.removed = True
         self.reject()
 

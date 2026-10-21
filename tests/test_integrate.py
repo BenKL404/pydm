@@ -180,5 +180,29 @@ class IntegrateTest(unittest.TestCase):
         with open(self.autostart()) as f:
             self.assertIn(exec_line + " --minimized", f.read())
 
+    def test_installed_app_windows(self):
+        exe = "C:\\Programs\\PyDM\\pydm.exe"
+        with mock.patch.object(integrate, "WINDOWS", True), mock.patch.object(integrate.sys, "frozen", True, create=True), \
+                mock.patch.object(integrate.sys, "executable", exe):
+            self.assertEqual(integrate.installed_app(), exe)
+        with mock.patch.object(integrate, "WINDOWS", True):
+            self.assertIsNone(integrate.installed_app())            # pas figé (sources) : rien à intégrer
+        with mock.patch.object(integrate, "appimage_path", return_value=self.appimage):
+            self.assertEqual(integrate.installed_app(), self.appimage)
+
+    def test_dispatch_windows(self):
+        with mock.patch.object(integrate, "WINDOWS", True), \
+                mock.patch.dict(os.environ, {"LOCALAPPDATA": "C:\\L"}), \
+                mock.patch.object(integrate, "installed_app", return_value="C:\\P\\pydm.exe"), \
+                mock.patch("pydm.integrate_win.integrate", return_value="new") as integ, \
+                mock.patch("pydm.integrate_win.remove") as remove, \
+                mock.patch("pydm.integrate_win.set_autostart") as autostart:
+            self.assertEqual(integrate.integrate("C:\\P\\pydm.exe"), "new")
+            integrate.remove()
+            integrate.set_autostart(True)
+        integ.assert_called_once_with("C:\\P\\pydm.exe", "C:\\L")
+        remove.assert_called_once_with("C:\\L", "C:\\P\\pydm.exe")
+        autostart.assert_called_once_with(True, "C:\\P\\pydm.exe")
+
 if __name__ == "__main__":
     unittest.main()

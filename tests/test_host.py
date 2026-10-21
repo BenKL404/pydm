@@ -96,5 +96,23 @@ class HostTest(unittest.TestCase):
         for args in ((None, "Élodie Durand"), ("C:\\x\\cfg", "u")):
             self.assertEqual(pydm_host.pipe_address(*args), ipc.pipe_address(*args))
 
+    def test_lancement_windows(self):
+        sys.path.insert(0, os.path.dirname(HOST))
+        try:
+            import pydm_host
+        finally:
+            sys.path.pop(0)
+        exe = "C:\\Users\\Élodie Durand\\Programs\\PyDM\\pydm-host.exe"
+        with mock.patch.object(pydm_host, "WINDOWS", True), mock.patch.object(sys, "frozen", True, create=True), \
+                mock.patch.object(sys, "executable", exe), mock.patch.object(pydm_host, "RETRIES", 1), \
+                mock.patch.object(pydm_host, "_send", side_effect=FileNotFoundError), \
+                mock.patch.object(pydm_host.os.path, "exists", return_value=True), \
+                mock.patch.object(pydm_host.subprocess, "Popen") as popen, mock.patch.object(pydm_host.time, "sleep"):
+            pydm_host.forward({"action": "add", "url": "https://a.fr/x"})
+        args, kwargs = popen.call_args
+        self.assertEqual(args[0], ["C:\\Users\\Élodie Durand\\Programs\\PyDM\\pydm.exe", "--minimized"])
+        self.assertEqual(kwargs["creationflags"], 0x208)
+        self.assertNotIn("start_new_session", kwargs)
+
 if __name__ == "__main__":
     unittest.main()

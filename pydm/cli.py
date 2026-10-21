@@ -84,6 +84,11 @@ def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if getattr(sys, "frozen", False):
         prepare_frozen_env(os.environ, getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)))
+    if argv[:1] == ["--remove-integration"]:      # désinstalleur Windows, ou retrait à la main
+        from . import integrate
+        integrate.remove()
+        print("PyDM a été retiré du système.")
+        return
     if argv[:1] == ["--native-host"]:       # lancé par le navigateur, qui ajoute ses propres arguments
         import pydm_host
         pydm_host.main()

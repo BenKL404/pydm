@@ -80,5 +80,11 @@ class CliTest(unittest.TestCase):
             prepare_frozen_env(env, "/b", ca_files=(absent,))
             self.assertNotIn("SSL_CERT_FILE", env)
 
+    def test_remove_integration(self):
+        from pydm import cli
+        with mock.patch("pydm.integrate.remove") as remove, mock.patch("builtins.print"):
+            cli.main(["--remove-integration"])
+        remove.assert_called_once_with()
+
 if __name__ == "__main__":
     unittest.main()

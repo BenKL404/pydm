@@ -30,6 +30,7 @@ Icon=pydm
 Terminal=false
 X-GNOME-Autostart-enabled=true
 """
+WINDOWS = os.name == "nt"
 ROOT = getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PACKAGE = os.path.dirname(os.path.abspath(__file__))
 
@@ -38,6 +39,17 @@ def appimage_path():
     """Chemin de l'AppImage en cours d'exécution, ou None hors AppImage."""
     path = os.environ.get("APPIMAGE")
     return path if path and os.path.isfile(path) else None
+
+
+def installed_app():
+    """Programme à intégrer au système : l'AppImage, ou pydm.exe figé sous Windows ; None sinon."""
+    if WINDOWS:
+        return sys.executable if getattr(sys, "frozen", False) else None
+    return appimage_path()
+
+
+def _local_appdata():
+    return os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local")
 
 
 def launcher(home=None):
@@ -68,6 +80,12 @@ def _install_sh_command(home):
 
 def set_autostart(enabled, home=None, launcher=None):
     """Démarrage avec la session : l'AppImage (ou `launcher`), sinon le lanceur d'install.sh."""
+    if WINDOWS:
+        from . import integrate_win
+        exe = launcher or installed_app()
+        if exe:
+            integrate_win.set_autostart(enabled, exe)
+        return
     home = home or os.path.expanduser("~")
     path = os.path.join(home, AUTOSTART_FILE)
     if enabled:
@@ -130,6 +148,9 @@ def _update(path, data, mode=0o644):
 
 def integrate(appimage, home=None):
     """Relie PyDM au système. Renvoie "new", "updated" (AppImage déplacée) ou "same"."""
+    if WINDOWS:
+        from . import integrate_win
+        return integrate_win.integrate(appimage, _local_appdata())
     home = home or os.path.expanduser("~")
     wrapper = os.path.join(home, WRAPPER)
     env = "APPIMAGE_EXTRACT_AND_RUN=1 " if _extract_mode() else ""
@@ -152,6 +173,10 @@ def integrate(appimage, home=None):
 
 
 def remove(home=None):
+    if WINDOWS:
+        from . import integrate_win
+        integrate_win.remove(_local_appdata(), installed_app() or sys.executable)
+        return
     """Retire l'intégration de l'AppImage ; laisse réglages, téléchargements et installation install.sh."""
     home = home or os.path.expanduser("~")
     wrapper = os.path.join(home, WRAPPER)

@@ -28,7 +28,7 @@ def forget_bundle_qt_paths():
 
 def integrate_system(window):
     """Depuis l'AppImage : relie PyDM au menu et aux navigateurs (message la première fois)."""
-    appimage = integrate.appimage_path()
+    appimage = integrate.installed_app()
     if not appimage:
         return None
     try:
