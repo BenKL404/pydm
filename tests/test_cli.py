@@ -1,8 +1,11 @@
+import json
 import os
+import struct
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -33,6 +36,31 @@ class CliTest(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("Interface indisponible : PySide6 n'est pas installé. Relancez ./install.sh", r.stderr)
 
+
+    def test_native_host_arguments_navigateur(self):
+        from pydm import cli
+        sys.path.insert(0, ROOT)
+        for args in (["/x/com.pydm.host.json", "pydm@local"],
+                     ["chrome-extension://feloklndigmnjlmffbddgcdfigpnbcba/", "--parent-window=0"]):
+            with mock.patch("pydm_host.main") as host:
+                cli.main(["--native-host", *args])
+            host.assert_called_once_with()
+
+    def test_native_host_ping_reel(self):
+        raw = json.dumps({"action": "ping"}).encode()
+        r = subprocess.run([sys.executable, "-m", "pydm", "--native-host", "chrome-extension://x/"], cwd=ROOT,
+                           input=struct.pack("<I", len(raw)) + raw, capture_output=True, timeout=30)
+        self.assertTrue(json.loads(r.stdout[4:])["ok"], r.stderr)
+
+    def test_environnement_fige(self):
+        from pydm.cli import prepare_frozen_env
+        env = {"PATH": "/usr/bin", "LD_LIBRARY_PATH": "/tmp/_MEI/lib", "LD_LIBRARY_PATH_ORIG": "/opt/lib"}
+        prepare_frozen_env(env, "/app/usr/bin/pydm")
+        self.assertEqual(env["PATH"], "/app/usr/bin:/usr/bin")
+        self.assertEqual(env["LD_LIBRARY_PATH"], "/opt/lib")
+        env = {"PATH": "/usr/bin", "LD_LIBRARY_PATH": "/tmp/_MEI/lib"}
+        prepare_frozen_env(env, "/app/usr/bin/pydm")
+        self.assertNotIn("LD_LIBRARY_PATH", env)
 
 if __name__ == "__main__":
     unittest.main()

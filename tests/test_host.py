@@ -6,6 +6,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 HOST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pydm_host.py")
 
@@ -55,6 +56,35 @@ class HostTest(unittest.TestCase):
             self.assertFalse(os.path.exists(marker))
         self.assertFalse(reply["ok"])
 
+
+    def test_lancement_appimage(self):
+        with tempfile.TemporaryDirectory() as home:
+            mark = os.path.join(home, "lance")
+            fake = os.path.join(home, "PyDM.AppImage")
+            with open(fake, "w") as f:
+                f.write(f'#!/bin/sh\necho "$@" > "{mark}"\n')
+            os.chmod(fake, 0o755)
+            env = dict(os.environ, HOME=home, PYDM_CONFIG_DIR=os.path.join(home, "cfg"), APPIMAGE=fake,
+                       PYDM_HOST_RETRIES="4")
+            reply = call_host({"action": "add", "url": "https://a.fr/x"}, env)   # PyDM ne répond jamais
+            self.assertFalse(reply["ok"])
+            self.assertNotIn("install.sh", reply["error"])
+            time.sleep(0.3)
+            with open(mark) as f:
+                self.assertEqual(f.read().strip(), "--minimized")
+
+    def test_ping_fige(self):
+        sys.path.insert(0, os.path.dirname(HOST))
+        try:
+            import pydm_host
+        finally:
+            sys.path.pop(0)
+        with mock.patch.object(sys, "frozen", True, create=True), \
+                mock.patch.object(pydm_host, "send_message") as send, \
+                mock.patch.object(pydm_host, "read_message", return_value={"action": "ping"}), \
+                mock.patch.object(pydm_host, "YTDLP", "/nulle/part/yt_dlp"):
+            pydm_host.main()
+        self.assertTrue(send.call_args[0][0]["ytdlp"])
 
 if __name__ == "__main__":
     unittest.main()

@@ -21,6 +21,13 @@ SOCKET_PATH = os.path.join(CONFIG_DIR, "pydm.sock")
 LAUNCHER = os.path.join(os.path.expanduser("~"), ".local", "bin", "pydm")
 YTDLP = os.path.join(os.path.expanduser("~"), ".local", "share", "pydm", "venv", "lib", "python*",
                      "site-packages", "yt_dlp")     # PyDM tourne dans son environnement, pas le Python système
+RETRIES = int(os.environ.get("PYDM_HOST_RETRIES") or 60)
+
+
+def launch_command():
+    """PyDM depuis son AppImage (hôte lancé par l'AppImage), sinon le lanceur d'install.sh."""
+    appimage = os.environ.get("APPIMAGE")
+    return [appimage or LAUNCHER, "--minimized"]
 
 
 def read_message():
@@ -39,7 +46,9 @@ def send_message(obj):
 
 def forward(msg):
     launched = False
-    for _ in range(60):
+    command = launch_command()
+    appimage = bool(os.environ.get("APPIMAGE"))
+    for _ in range(RETRIES):
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
                 s.settimeout(5)
@@ -50,14 +59,15 @@ def forward(msg):
             if msg.get("action") == "prefetch":    # simple préparation : jamais de lancement
                 return {"ok": False, "error": "PyDM fermé"}
             if not launched:
-                if not os.path.exists(LAUNCHER):
-                    return {"ok": False, "error": "PyDM n'est pas installé (lancez install.sh)"}
-                subprocess.Popen([LAUNCHER, "--minimized"], start_new_session=True,
+                if not os.path.exists(command[0]):
+                    return {"ok": False, "error": "PyDM introuvable : relancez l'AppImage" if appimage
+                            else "PyDM n'est pas installé (lancez install.sh)"}
+                subprocess.Popen(command, start_new_session=True,
                                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                  stderr=subprocess.DEVNULL)
                 launched = True
             time.sleep(0.25)
-    return {"ok": False, "error": "PyDM ne démarre pas (relancez install.sh)"}
+    return {"ok": False, "error": "PyDM ne démarre pas" + ("" if appimage else " (relancez install.sh)")}
 
 
 def main():
@@ -65,7 +75,7 @@ def main():
     if msg is None:
         return
     if msg.get("action") == "ping":
-        send_message({"ok": True, "ytdlp": bool(glob.glob(YTDLP))})
+        send_message({"ok": True, "ytdlp": bool(getattr(sys, "frozen", False) or glob.glob(YTDLP))})
     else:
         send_message(forward(msg))
 

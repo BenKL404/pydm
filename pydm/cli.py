@@ -60,7 +60,25 @@ def folder(value):
     return os.path.abspath(os.path.expanduser(value))
 
 
+def prepare_frozen_env(environ, executable):
+    """Programme figé : ffmpeg livré à côté de l'exécutable, et bibliothèques du système pour les
+    programmes lancés (navigateur, gestionnaire de fichiers…) au lieu de celles du paquet."""
+    environ["PATH"] = os.pathsep.join(p for p in (os.path.dirname(executable), environ.get("PATH")) if p)
+    original = environ.pop("LD_LIBRARY_PATH_ORIG", None)
+    if original:
+        environ["LD_LIBRARY_PATH"] = original
+    else:
+        environ.pop("LD_LIBRARY_PATH", None)
+
+
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if getattr(sys, "frozen", False):
+        prepare_frozen_env(os.environ, sys.executable)
+    if argv[:1] == ["--native-host"]:       # lancé par le navigateur, qui ajoute ses propres arguments
+        import pydm_host
+        pydm_host.main()
+        return
     p = argparse.ArgumentParser(prog="pydm", description="PyDM - téléchargements multi-connexions")
     p.add_argument("url", nargs="?", help="URL à télécharger (sans URL : interface graphique)")
     p.add_argument("-o", "--output", type=folder, help="dossier de destination (défaut : celui des préférences)")
