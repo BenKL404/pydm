@@ -77,9 +77,11 @@ $cfg = Join-Path $env:APPDATA "PyDM"
 New-Item -ItemType Directory -Force -Path $cfg | Out-Null
 @{ confirm_add = $false; show_progress = $false; folder = $dl; sort_by_type = $false } | ConvertTo-Json | Set-Content (Join-Path $cfg "settings.json") -Encoding utf8
 $reply = Join-Path $env:TEMP "pydm-e2e-reply.json"
+$msgFile = Join-Path $env:TEMP "pydm-e2e-msg.json"
 $msg = @{ action = "add"; url = "http://127.0.0.1:8765/essai.bin"; kind = "file" } | ConvertTo-Json -Compress
+[IO.File]::WriteAllText($msgFile, $msg, (New-Object Text.UTF8Encoding $false))
 $j = Start-Process pwsh -ArgumentList "-NoProfile", "-File", (Join-Path $PSScriptRoot "e2e_windows_job.ps1"),
-    "-Host_", (Join-Path $App "pydm-host.exe"), "-Message", $msg, "-Out", $reply -PassThru -Wait -NoNewWindow
+    "-Host_", (Join-Path $App "pydm-host.exe"), "-MessageFile", $msgFile, "-Out", $reply -PassThru -Wait -NoNewWindow
 if ($j.ExitCode) { throw "Lanceur en job : code $($j.ExitCode)" }
 $r = Get-Content $reply -Raw | ConvertFrom-Json
 if (-not $r.ok) { throw "add : $(Get-Content $reply -Raw)" }

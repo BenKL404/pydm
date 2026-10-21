@@ -3,7 +3,7 @@
 # Imite Firefox : ce processus se place dans un « job » Windows qui tue tous ses processus à sa
 # fermeture (sortie autorisée, comme Firefox), lance l'hôte natif, écrit sa réponse, puis se termine.
 # PyDM lancé par l'hôte doit survivre (CREATE_BREAKAWAY_FROM_JOB).
-param([Parameter(Mandatory = $true)][string]$Host_, [Parameter(Mandatory = $true)][string]$Message,
+param([Parameter(Mandatory = $true)][string]$Host_, [Parameter(Mandatory = $true)][string]$MessageFile,
       [Parameter(Mandatory = $true)][string]$Out)
 $ErrorActionPreference = "Stop"
 Add-Type @"
@@ -34,7 +34,7 @@ public static class Job {
 }
 "@
 [Job]::Enter()
-$body = [Text.Encoding]::UTF8.GetBytes($Message)
+$body = [IO.File]::ReadAllBytes($MessageFile)       # fichier : la ligne de commande abîmerait le JSON
 $psi = New-Object Diagnostics.ProcessStartInfo $Host_
 $psi.Arguments = "chrome-extension://feloklndigmnjlmffbddgcdfigpnbcba/ --parent-window=0"
 $psi.UseShellExecute = $false
