@@ -86,5 +86,15 @@ class HostTest(unittest.TestCase):
             pydm_host.main()
         self.assertTrue(send.call_args[0][0]["ytdlp"])
 
+    def test_meme_adresse(self):
+        sys.path.insert(0, os.path.dirname(HOST))
+        try:
+            import pydm_host
+        finally:
+            sys.path.pop(0)
+        from pydm import ipc
+        for args in ((None, "Élodie Durand"), ("C:\\x\\cfg", "u")):
+            self.assertEqual(pydm_host.pipe_address(*args), ipc.pipe_address(*args))
+
 if __name__ == "__main__":
     unittest.main()
