@@ -60,10 +60,10 @@ def folder(value):
     return os.path.abspath(os.path.expanduser(value))
 
 
-def prepare_frozen_env(environ, executable):
-    """Programme figé : ffmpeg livré à côté de l'exécutable, et bibliothèques du système pour les
+def prepare_frozen_env(environ, bundle_dir):
+    """Programme figé : ffmpeg livré dans le dossier des binaires (sys._MEIPASS), et bibliothèques du système pour les
     programmes lancés (navigateur, gestionnaire de fichiers…) au lieu de celles du paquet."""
-    environ["PATH"] = os.pathsep.join(p for p in (os.path.dirname(executable), environ.get("PATH")) if p)
+    environ["PATH"] = os.pathsep.join(p for p in (bundle_dir, environ.get("PATH")) if p)
     original = environ.pop("LD_LIBRARY_PATH_ORIG", None)
     if original:
         environ["LD_LIBRARY_PATH"] = original
@@ -74,7 +74,7 @@ def prepare_frozen_env(environ, executable):
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if getattr(sys, "frozen", False):
-        prepare_frozen_env(os.environ, sys.executable)
+        prepare_frozen_env(os.environ, getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)))
     if argv[:1] == ["--native-host"]:       # lancé par le navigateur, qui ajoute ses propres arguments
         import pydm_host
         pydm_host.main()

@@ -3,3 +3,5 @@ __pycache__/
 .venv/
 dist/
 extension/.amo-upload-uuid
+build/
+packaging/cache/
