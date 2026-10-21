@@ -1,7 +1,22 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Kokou Bernard KPEDZI
-"""Formatage des tailles et durées, noms de fichiers libres."""
+"""Formatage des tailles et durées, noms de fichiers libres et valides."""
 import os
+import re
+
+RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
+
+
+def safe_filename(name, windows=(os.name == "nt"), fallback="telechargement"):
+    """Nom de fichier valide sur le système : sous Windows, sans caractères interdits ni nom réservé."""
+    name = (name or "").strip()
+    if windows:
+        name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name).rstrip(". ")
+        if name.split(".", 1)[0].upper() in RESERVED:
+            name = "_" + name
+    else:
+        name = name.replace("/", "_")
+    return name or fallback
 
 
 def human(n):

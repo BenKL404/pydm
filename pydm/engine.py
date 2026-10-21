@@ -16,7 +16,7 @@ from email.message import Message
 
 from .filetypes import category
 from .scheduler import LIMITER
-from .util import unique_path
+from .util import safe_filename, unique_path
 
 CHUNK = 64 * 1024
 MIN_SPLIT = 2 * 1024 * 1024
@@ -58,7 +58,7 @@ def probe(url, headers=None):
         name = msg.get_filename()
     if not name:
         name = os.path.basename(urllib.parse.unquote(urllib.parse.urlparse(final).path))
-    name = (name or "telechargement").replace("/", "_").strip() or "telechargement"
+    name = safe_filename(name)
     return size, ranges, name
 
 
@@ -348,6 +348,11 @@ class VideoDownload(_Task):
         self.status = "Terminé" if name and os.path.exists(self.path) else (
             "En pause" if name else "En attente")
 
+    def _safe_stem(self):
+        """Nom choisi, tronqué à 150 octets puis rendu valide ("" : nom donné par yt-dlp)."""
+        raw = (self.stem or "").strip().encode()[:150].decode(errors="ignore")
+        return safe_filename(raw, fallback="")
+
     @property
     def path(self):
         return os.path.join(self.folder, self.name or "")
@@ -359,8 +364,8 @@ class VideoDownload(_Task):
         """Fichier final et fichiers intermédiaires de yt-dlp (.fNNN, .part, .ytdl…)."""
         if self.name:
             base, own = os.path.splitext(self.path)[0], [self.path, self.path + ".part", self.path + ".ytdl"]
-        elif self.stem and self.stem.strip():
-            base, own = os.path.join(self.folder, self.stem.replace("/", "_").strip()), []
+        elif self._safe_stem():
+            base, own = os.path.join(self.folder, self._safe_stem()), []
         else:
             return []
         b = glob.escape(base)
@@ -413,7 +418,7 @@ class VideoDownload(_Task):
             fmt = f"b[height<={h.group(1)}]/b" if h else "b"
         if self.fmt and self.fmt != fmt:            # format choisi, repli si YouTube l'a retiré
             fmt = f"{self.fmt}/{fmt}"
-        stem = (self.stem or "").replace("/", "_").strip().encode()[:150].decode(errors="ignore").strip()
+        stem = self._safe_stem()
         opts = {
             "outtmpl": os.path.join(self.folder, (stem.replace("%", "%%") or "%(title).150B [%(id)s]")
                                     + ".%(ext)s"),

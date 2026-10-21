@@ -20,7 +20,7 @@ from ..cache import video_key
 from ..engine import UA
 from ..engine import QUALITIES
 from ..filetypes import category
-from ..util import human, human_time
+from ..util import human, human_time, safe_filename
 from . import theme
 
 TIMEOUT = 30
@@ -331,7 +331,7 @@ class AddDialog(QDialog):
         choice = None
         if r and r["kind"] == "video" and self.quality_box.currentIndex() >= 0:
             choice = r["choices"][self.quality_box.currentIndex()]
-        name = (self.name_edit.text().strip() or (r and r.get("name")) or self.filename or "").replace("/", "_")
+        name = safe_filename(self.name_edit.text().strip() or (r and r.get("name")) or self.filename or "", fallback="")
         audio_mp3 = bool(choice and choice["audio_only"] and choice["ext"] == "mp3")
         auto = self._category(r, choice) is None and not self.folder_edit.isModified()
         return [{"url": self.urls[0], "kind": kind, "folder": self.folder_edit.text().strip() or self.settings["folder"],

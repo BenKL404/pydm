@@ -7,7 +7,7 @@ import urllib.parse
 import urllib.request
 
 from .engine import UA, friendly_error, have_ytdlp, looks_like_video, probe, ytdlp_attempts
-from .util import human
+from .util import human, safe_filename
 
 THUMB_MAX = 64 * 1024
 SEP = " · "
@@ -185,7 +185,7 @@ def _video(url, headers, browser, default_quality, ffmpeg):
     choices, missing = build_choices(info, ffmpeg)
     sel = preselect(choices, default_quality)
     title = info.get("title") or url
-    stem = title.replace("/", "_").strip() or "video"
+    stem = safe_filename(title, fallback="video")
     return _result(kind="video", name=f"{stem}.{choices[sel]['ext']}", size=choices[sel]["size"],
                    resumable=True, site=info.get("webpage_url_domain") or urllib.parse.urlparse(url).hostname,
                    title=title, duration=info.get("duration"), thumbnail=_thumbnail(info),
