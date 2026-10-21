@@ -1,6 +1,6 @@
 # PyDM
 
-**A multi-connection download manager for Linux, in the spirit of Internet Download Manager (IDM).**
+**A multi-connection download manager for Linux (and Windows, experimental), in the spirit of Internet Download Manager (IDM).**
 
 [![CI](https://github.com/BenKL404/pydm/actions/workflows/ci.yml/badge.svg)](https://github.com/BenKL404/pydm/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
@@ -75,6 +75,24 @@ browsers. If you move the file, just open it again. To uninstall, use
 distributions from 2022 onwards (x86_64). If it does not start because FUSE is
 missing, run it once as `APPIMAGE_EXTRACT_AND_RUN=1 ./PyDM-*.AppImage`: the menu
 entry and the browser link then keep that mode.
+
+### Windows (experimental)
+
+Download `PyDM-<version>-Setup.exe` from the
+[latest release](https://github.com/BenKL404/pydm/releases/latest) and run it: no
+administrator rights needed, PyDM goes to your Start menu and registers with
+Firefox, Chrome, Edge, Brave, Vivaldi and Opera on first launch. Prefer no
+installer? Unzip `PyDM-<version>-windows-portable.zip` anywhere and run
+`pydm.exe`. Windows 10 and 11, 64-bit.
+
+- The installer is not code-signed: Windows SmartScreen shows "Windows protected
+  your PC". Click "More info", then "Run anyway".
+- Chrome, Edge and Brave encrypt their cookies on Windows in a way PyDM cannot
+  read: for videos that need your account, choose Firefox under "Cookies".
+- The Windows build is tested automatically (unit tests plus an install →
+  browser host → download → uninstall run on a Windows machine), not yet by
+  hand. Please report anything odd in the
+  [issues](https://github.com/BenKL404/pydm/issues).
 
 ### From source
 

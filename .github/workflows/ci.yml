@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, windows]     # TEMPORAIRE : branche windows le temps du portage
+    branches: [main]
     tags: ["v*"]
   pull_request:
 

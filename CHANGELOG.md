@@ -7,6 +7,26 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Experimental Windows build: `PyDM-<version>-Setup.exe` (per-user, no
+  administrator rights) and a portable zip. PyDM registers itself with the
+  browsers in the user's registry on launch (moving the folder is repaired on
+  the next launch), "Start with the session" uses the `Run` key, and the
+  uninstaller removes everything. The browser talks to PyDM through a per-user
+  named pipe. Built and tested end to end on a Windows CI machine.
+- `pydm --remove-integration` removes the browser link, menu entry and
+  autostart (Windows uninstaller, or by hand).
+
+### Changed
+
+- File names are made valid on Windows (forbidden characters, reserved names,
+  trailing dots); Linux behaviour is unchanged.
+- Typed folders are normalised (`~` expanded, one kind of separator).
+- On Windows, "power off" and "suspend" at the end of the queue use
+  `shutdown` and `SetSuspendState`; a clear message explains that Chrome's
+  cookies cannot be read on Windows.
+
 ## [1.3.0] - 2026-10-21
 
 ### Added

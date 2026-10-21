@@ -1,4 +1,4 @@
-# PyDM — gestionnaire de téléchargement pour Linux (style IDM)
+# PyDM — gestionnaire de téléchargement pour Linux et Windows (style IDM)
 
 🇬🇧 [Read in English](README.md)
 
@@ -21,6 +21,26 @@ le fichier. Fonctionne sur les distributions de 2022 et plus récentes (x86_64).
 S'il ne démarre pas faute de FUSE, lancez-le une fois avec
 `APPIMAGE_EXTRACT_AND_RUN=1 ./PyDM-*.AppImage` : le menu et la liaison avec le
 navigateur gardent ensuite ce mode.
+
+### Windows (expérimental)
+
+Téléchargez `PyDM-<version>-Setup.exe` depuis la
+[dernière version](https://github.com/BenKL404/pydm/releases/latest) et lancez-le :
+pas besoin de droits administrateur, PyDM s'ajoute au menu Démarrer et se déclare
+auprès de Firefox, Chrome, Edge, Brave, Vivaldi et Opera au premier lancement.
+Sans installateur : décompressez `PyDM-<version>-windows-portable.zip` où vous
+voulez et lancez `pydm.exe`. Windows 10 et 11, 64 bits.
+
+- L'installateur n'est pas signé : Windows SmartScreen affiche « Windows a
+  protégé votre ordinateur ». Cliquez sur « Informations complémentaires », puis
+  « Exécuter quand même ».
+- Chrome, Edge et Brave chiffrent leurs cookies sous Windows d'une façon que PyDM
+  ne peut pas lire : pour les vidéos qui demandent votre compte, choisissez Firefox
+  dans « Cookies ».
+- La version Windows est vérifiée automatiquement (tests, puis installation →
+  hôte du navigateur → téléchargement → désinstallation sur une machine Windows),
+  mais pas encore à la main. Signalez tout souci dans les
+  [issues](https://github.com/BenKL404/pydm/issues).
 
 ### Depuis les sources
 
