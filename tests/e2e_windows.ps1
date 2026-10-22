@@ -80,8 +80,13 @@ $reply = Join-Path $env:TEMP "pydm-e2e-reply.json"
 $msgFile = Join-Path $env:TEMP "pydm-e2e-msg.json"
 $msg = @{ action = "add"; url = "http://127.0.0.1:8765/essai.bin"; kind = "file" } | ConvertTo-Json -Compress
 [IO.File]::WriteAllText($msgFile, $msg, (New-Object Text.UTF8Encoding $false))
-$j = Start-Process pwsh -ArgumentList "-NoProfile", "-File", (Join-Path $PSScriptRoot "e2e_windows_job.ps1"),
-    "-Host_", (Join-Path $App "pydm-host.exe"), "-MessageFile", $msgFile, "-Out", $reply -PassThru -Wait -NoNewWindow
+# Process.Start et non Start-Process -Wait : ce dernier attend aussi les descendants, dont PyDM
+$psi = New-Object Diagnostics.ProcessStartInfo "pwsh"
+foreach ($a in "-NoProfile", "-File", (Join-Path $PSScriptRoot "e2e_windows_job.ps1"), "-Host_",
+                (Join-Path $App "pydm-host.exe"), "-MessageFile", $msgFile, "-Out", $reply) { $psi.ArgumentList.Add($a) }
+$psi.UseShellExecute = $false
+$j = [Diagnostics.Process]::Start($psi)
+if (-not $j.WaitForExit(120000)) { $j.Kill(); throw "Lanceur en job bloqué" }
 if ($j.ExitCode) { throw "Lanceur en job : code $($j.ExitCode)" }
 $r = Get-Content $reply -Raw | ConvertFrom-Json
 if (-not $r.ok) { throw "add : $(Get-Content $reply -Raw)" }
