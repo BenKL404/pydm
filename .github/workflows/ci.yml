@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, windows]     # TEMPORAIRE : validation des corrections Windows
+    branches: [main]
     tags: ["v*"]
   pull_request:
 
