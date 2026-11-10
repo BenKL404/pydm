@@ -1,4 +1,9 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-  <path fill="currentColor" fill-rule="evenodd" d="M3 13.2a9 9 0 1 0 18 0a9 9 0 1 0-18 0zM11 8h2v4.7l3.1 2-1.1 1.7-4-2.6zM10.1 1.4h3.8a1.1 1.1 0 0 1 0 2.2h-3.8a1.1 1.1 0 0 1 0-2.2z"/>
+<!-- Deux tons : #010101 = corps, #fefefe = détail (couleurs du thème) ; accent fixe -->
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <path d="M5 9l4-4M27 9l-4-4" stroke="#8b5cf6" stroke-width="3" stroke-linecap="round"/>
+  <path d="M9 27l2-3M23 27l-2-3" stroke="#010101" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="16" cy="17" r="11" fill="#010101"/>
+  <circle cx="16" cy="17" r="8.2" fill="#fefefe"/>
+  <path d="M16 12v5l3.5 2.5" stroke="#8b5cf6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
 </svg>

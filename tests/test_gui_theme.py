@@ -21,12 +21,13 @@ class ThemeTest(unittest.TestCase):
                 self.assertFalse(icon.pixmap(24, 24).isNull())
 
     def test_recoloration(self):
-        img = self.theme.icon("pause", "#ff0000").pixmap(24, 24).toImage()
+        img = self.theme.icon("type-other", "#ff0000").pixmap(24, 24).toImage()   # icône monochrome
         k = img.width() / 24        # échelle de l'écran (HiDPI)
-        glyph = img.pixelColor(int(4 * k), int(12 * k))
-        self.assertGreater(glyph.red(), 200)
-        self.assertLess(glyph.green(), 50)
-        self.assertEqual(img.pixelColor(int(10 * k), int(12 * k)).alpha(), 0)    # découpe de la barre gauche
+        colored = [img.pixelColor(int(x * k), int(y * k)) for x in range(24) for y in range(24)]
+        opaque = [c for c in colored if c.alpha() > 200]
+        self.assertTrue(opaque)
+        self.assertTrue(all(c.red() > 200 and c.green() < 50 for c in opaque))
+        self.assertTrue(any(c.alpha() == 0 for c in colored))                     # fond transparent
 
     def test_logo(self):
         self.assertFalse(self.theme.logo().isNull())
