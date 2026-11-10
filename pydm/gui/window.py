@@ -43,7 +43,7 @@ from .model import DownloadFilter, DownloadModel, counts
 from .progress import ProgressDialog
 from .schedule import EndActionDialog, ScheduleDialog, run_end_action
 from .sidebar import Sidebar
-from .widgets import DetailPanel, SpeedSparkline
+from .widgets import DetailPanel, EmptyState, SpeedSparkline
 
 WIDTHS = (300, 80, 190, 90, 80, 170, 120)
 
@@ -206,6 +206,8 @@ class MainWindow(QMainWindow):
         self.search.setPlaceholderText("Rechercher dans les noms et les liens…  (Échap pour fermer)")
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self.proxy.set_search)
+        # le champ de recherche est créé avant l'état vide de la liste
+        self.search.textChanged.connect(lambda *_: hasattr(self, "empty") and self._update_empty())
         self.search.installEventFilter(self)
         self.search.hide()
 
@@ -233,9 +235,7 @@ class MainWindow(QMainWindow):
         t.customContextMenuRequested.connect(self._context_menu)
         t.doubleClicked.connect(self._double_click)
         t.installEventFilter(self)
-        self.empty = QLabel("Collez un lien ou glissez-le ici pour commencer", t.viewport())
-        self.empty.setAlignment(Qt.AlignCenter)
-        self.empty.setStyleSheet(f"color: {theme.colors()['muted']}; font-size: 14px;")
+        self.empty = EmptyState(t.viewport())
         t.viewport().installEventFilter(self)
         self.table = t
 
@@ -385,10 +385,17 @@ class MainWindow(QMainWindow):
         self._update_empty()
 
     def _update_empty(self):
+        query = self.search.text().strip()
         if self.model.rowCount() == 0:
-            self.empty.setText("Collez un lien ou glissez-le ici pour commencer")
+            self.empty.show_state("vide", "Aucun téléchargement pour l'instant",
+                                  "Collez un lien, glissez-le ici, ou cliquez sur ⬇ dans le navigateur")
+        elif query:
+            shown = query if len(query) <= 60 else query[:60] + "…"
+            self.empty.show_state("recherche-vide", f"Aucun résultat pour « {shown} »",
+                                  "Essayez un autre mot, ou videz la recherche")
         else:
-            self.empty.setText("Aucun téléchargement dans cette vue")
+            self.empty.show_state("filtre-vide", "Rien ici pour l'instant",
+                                  "Les téléchargements de cette vue apparaîtront ici")
         self.empty.setVisible(self.proxy.rowCount() == 0)
 
     def toggle_sidebar(self):
@@ -827,7 +834,7 @@ class MainWindow(QMainWindow):
             name = b.property("icon_name")
             if name:
                 b.setIcon(theme.icon(name))
-        self.empty.setStyleSheet(f"color: {theme.colors()['muted']}; font-size: 14px;")
+        self.empty.refresh()
         self.model.layoutChanged.emit()
         self._update_detail()
 

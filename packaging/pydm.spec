@@ -29,6 +29,7 @@ a = Analysis(                               # noqa: F821
     pathex=[ROOT],
     binaries=binaries,
     datas=[(os.path.join(ROOT, "pydm", "gui", "icons"), os.path.join("pydm", "gui", "icons")),
+           (os.path.join(ROOT, "pydm", "gui", "illustrations"), os.path.join("pydm", "gui", "illustrations")),
            (os.path.join(ROOT, "pydm.desktop"), ".")],
     hiddenimports=["pydm_host"] + collect_submodules("pydm") + collect_submodules("yt_dlp"),
     excludes=["tkinter"] + [f"PySide6.{m}" for m in UNUSED_QT],

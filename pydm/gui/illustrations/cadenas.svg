@@ -1,0 +1,8 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Deux tons : #010101 = corps, #fefefe = détail (couleurs du thème) ; accents fixes -->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="72" viewBox="0 0 128 72">
+  <path d="M52 32v-8a12 12 0 0 1 24 0v8" fill="none" stroke="#010101" stroke-width="7"/>
+  <rect x="42" y="30" width="44" height="36" rx="7" fill="#f59e0b"/>
+  <circle cx="64" cy="45" r="5" fill="#fefefe"/>
+  <path d="M64 48v9" stroke="#fefefe" stroke-width="5" stroke-linecap="round"/>
+</svg>

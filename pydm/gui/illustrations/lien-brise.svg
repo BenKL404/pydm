@@ -1,0 +1,11 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Deux tons : #010101 = corps, #fefefe = détail (couleurs du thème) ; accents fixes -->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="72" viewBox="0 0 128 72">
+  <g transform="rotate(-20 40 40)">
+  <rect x="14" y="28" width="44" height="22" rx="11" fill="none" stroke="#010101" stroke-width="7"/>
+  </g>
+  <g transform="rotate(-20 88 32)">
+  <rect x="70" y="21" width="44" height="22" rx="11" fill="none" stroke="#ef4444" stroke-width="7"/>
+  </g>
+  <path d="M60 14l3 9M66 10v9M72 14l-3 9M56 58l3-9M62 62v-9M68 58l-3-9" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/>
+</svg>

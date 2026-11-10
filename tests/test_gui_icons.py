@@ -31,5 +31,29 @@ class ActionIconsTest(unittest.TestCase):
                 self.assertTrue(QSvgRenderer(path).isValid())
 
 
+
+ILLUSTRATIONS = os.path.join(os.path.dirname(ICONS), "illustrations")
+SIZES = {"vide": (220, 140), "filtre-vide": (160, 100), "recherche-vide": (160, 100), "installe": (150, 110),
+         "lien-brise": (128, 72), "cadenas": (128, 72)}
+
+
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class IllustrationsTest(unittest.TestCase):
+    def setUp(self):
+        app()
+
+    def test_illustrations(self):
+        from PySide6.QtSvg import QSvgRenderer
+        for name, (w, h) in SIZES.items():
+            with self.subTest(name=name):
+                path = os.path.join(ILLUSTRATIONS, name + ".svg")
+                with open(path, encoding="utf-8") as f:
+                    text = f.read()
+                drawing = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+                self.assertTrue("#010101" in drawing or "#fefefe" in drawing)
+                self.assertNotIn("currentColor", text)
+                self.assertEqual(ET.fromstring(text).get("viewBox"), f"0 0 {w} {h}")
+                self.assertTrue(QSvgRenderer(path).isValid())
+
 if __name__ == "__main__":
     unittest.main()

@@ -85,6 +85,50 @@ class ElidedLabel(QLabel):
         return QSize(60, self.fontMetrics().lineSpacing())
 
 
+class EmptyState(QWidget):
+    """Liste vide : illustration, titre et sous-titre. Laisse passer la souris (glisser-déposer)."""
+    MIN_ART_HEIGHT = 220            # en dessous, seule la phrase reste
+    WIDTHS = {"vide": 220}          # largeur de l'illustration ; 160 pour les autres
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.current = None
+        lay = QVBoxLayout(self)
+        lay.addStretch(1)
+        self.art = QLabel()
+        self.art.setAlignment(Qt.AlignCenter)
+        self.title = QLabel()
+        self.subtitle = QLabel()
+        for label in (self.title, self.subtitle):
+            label.setTextFormat(Qt.PlainText)       # texte de la recherche affiché tel quel
+            label.setAlignment(Qt.AlignCenter)
+            label.setWordWrap(True)
+        for w in (self.art, self.title, self.subtitle):
+            lay.addWidget(w)
+        lay.addStretch(1)
+        self.refresh()
+
+    def show_state(self, illustration, title, subtitle):
+        self.title.setText(breakable(title))
+        self.subtitle.setText(subtitle)
+        if illustration != self.current:
+            self.current = illustration
+            self.refresh()
+
+    def refresh(self):
+        """Couleurs et illustration du thème courant."""
+        self.title.setStyleSheet(f"font-weight: 600; font-size: 15px; color: {theme.colors()['text']};")
+        self.subtitle.setStyleSheet(f"color: {theme.colors()['muted']};")
+        if self.current:
+            self.art.setPixmap(theme.illustration(self.current, self.WIDTHS.get(self.current, 160),
+                                                  self.devicePixelRatioF()))
+
+    def resizeEvent(self, event):
+        self.art.setHidden(event.size().height() < self.MIN_ART_HEIGHT)
+        super().resizeEvent(event)
+
+
 class DetailPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)

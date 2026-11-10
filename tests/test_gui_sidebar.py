@@ -74,7 +74,8 @@ class SidebarWindowTest(unittest.TestCase):
         bar.type_tree.setCurrentItem(bar.type_tree.topLevelItem(4))       # Images
         self.w.tick()
         self.assertTrue(self.w.empty.isVisibleTo(self.w))
-        self.assertEqual(self.w.empty.text(), "Aucun téléchargement dans cette vue")
+        self.assertEqual(self.w.empty.title.text(), "Rien ici pour l'instant")
+        self.assertEqual(self.w.empty.current, "filtre-vide")
 
     def test_compteurs_a_jour(self):
         self.assertEqual(self.w.sidebar.state_tree.topLevelItem(0).text(1), "3")
