@@ -9,7 +9,7 @@ import urllib.parse
 from datetime import datetime
 
 from PySide6.QtCore import QByteArray, QEvent, QItemSelection, QItemSelectionModel, QSize, Qt, QTimer, QUrl
-from PySide6.QtGui import QDesktopServices, QGuiApplication, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QDesktopServices, QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
                                QMainWindow, QMenu, QMessageBox, QPushButton, QSplitter, QTableView,
                                QToolButton, QVBoxLayout, QWidget)
@@ -176,10 +176,10 @@ class MainWindow(QMainWindow):
         self.btn_force = self._tool("force", "Forcer (démarrer tout de suite)", self.force_selected)
         self.btn_schedule = self._tool("schedule", "Planifier", lambda: None)
         self.schedule_menu = QMenu(self)
-        self.schedule_menu.addAction(theme.icon("resume"), "Démarrer la file", self.start_queue)
-        self.schedule_menu.addAction(theme.icon("pause"), "Arrêter la file", self.stop_queue)
+        theme.add_action(self.schedule_menu, "resume", "Démarrer la file", self.start_queue)
+        theme.add_action(self.schedule_menu, "pause", "Arrêter la file", self.stop_queue)
         self.schedule_menu.addSeparator()
-        self.schedule_menu.addAction(theme.icon("schedule"), "Planification…", self.open_schedule)
+        theme.add_action(self.schedule_menu, "schedule", "Planification…", self.open_schedule)
         self.btn_schedule.setMenu(self.schedule_menu)
         self.btn_schedule.setPopupMode(QToolButton.InstantPopup)
         for b in (self.btn_resume, self.btn_pause, self.btn_force, self.btn_remove, self.btn_folder,
@@ -830,10 +830,11 @@ class MainWindow(QMainWindow):
 
     def refresh_icons(self):
         """Recolore les icônes après un changement de thème."""
-        for b in self.findChildren(QToolButton):
+        for b in self.findChildren(QToolButton) + self.findChildren(QAction):   # boutons, menus durables
             name = b.property("icon_name")
             if name:
                 b.setIcon(theme.icon(name))
+        self.sidebar.refresh_icons()
         self.empty.refresh()
         self.model.layoutChanged.emit()
         self._update_detail()

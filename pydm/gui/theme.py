@@ -98,6 +98,13 @@ def icon(name, color=None):
     return _cache[key]
 
 
+def add_action(menu, name, text, slot):
+    """Entrée de menu avec une icône du thème, recolorée par MainWindow.refresh_icons()."""
+    action = menu.addAction(icon(name), text, slot)
+    action.setProperty("icon_name", name)
+    return action
+
+
 def type_icon(category):
     return icon("type-" + category, TYPE_COLORS.get(category, TYPE_COLORS["other"]))
 

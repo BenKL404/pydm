@@ -59,5 +59,23 @@ class EmptyStateTest(WindowCase):
         self.assertNotEqual(w.empty.art.pixmap().toImage(), light)
 
 
+    def test_menus_suivent_le_theme(self):
+        from pydm.gui import theme
+        w = self.window()
+        theme.apply(app(), "light")
+        self.addCleanup(theme.apply, app(), "light")
+        w.refresh_icons()
+
+        def images():
+            acts = [a for a in w.schedule_menu.actions() if not a.isSeparator()]
+            items = [w.sidebar.state_tree.topLevelItem(0), w.sidebar.type_tree.topLevelItem(0)]
+            return ([a.icon().pixmap(24, 24).toImage() for a in acts]
+                    + [i.icon(0).pixmap(24, 24).toImage() for i in items])
+        light = images()
+        theme.apply(app(), "dark")
+        w.refresh_icons()
+        for before, after in zip(light, images()):
+            self.assertNotEqual(before, after)
+
 if __name__ == "__main__":
     unittest.main()

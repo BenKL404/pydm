@@ -65,7 +65,7 @@ class ProgressDialog(QDialog):
         self.values = {}
         for name in FIELDS:
             label = ElidedLabel(task.url, max_lines=2) if name == "Lien" else QLabel()
-            if name != "Lien":
+            if name not in ("Lien", "Statut"):        # « Statut » contient des coupures invisibles
                 label.setTextInteractionFlags(Qt.TextSelectableByMouse)
             self.values[name] = label
             form.addRow(name, label)

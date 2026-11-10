@@ -86,6 +86,13 @@ class Sidebar(QWidget):
         tree.currentItemChanged.connect(lambda *_: self.filter_changed.emit(self.state_key(), self.type_key()))
         return tree
 
+    def refresh_icons(self):
+        """Icônes et pastilles aux couleurs du thème courant."""
+        for tree, icon in ((self.state_tree, self._state_icon), (self.type_tree, self._type_icon)):
+            for i in range(tree.topLevelItemCount()):
+                item = tree.topLevelItem(i)
+                item.setIcon(0, icon(item.data(0, Qt.UserRole)))
+
     def state_key(self):
         item = self.state_tree.currentItem()
         return item.data(0, Qt.UserRole) if item else "all"

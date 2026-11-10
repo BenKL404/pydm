@@ -92,5 +92,40 @@ class LongTextTest(unittest.TestCase):
         self.assertEqual(label.full_text(), TITLE)
 
 
+    def test_emoji(self):
+        from pydm.gui.widgets import ElidedLabel
+        text = "😀😀😀 Titre avec émojis 🎵🎶 " * 6
+        full = ElidedLabel(text, max_lines=50)
+        lines = full._lines(300)
+        self.assertEqual(" ".join(lines).split(), text.split())      # coupures entre les mots, rien de perdu
+        self.assertTrue(all(lines))
+        two = ElidedLabel(text, max_lines=2)._lines(300)
+        self.assertEqual(len(two), 2)
+        self.assertTrue(text.startswith(two[0]))
+        self.assertTrue(two[1].endswith("…"))
+
+    def test_titre_avec_balises(self):
+        from PySide6.QtCore import Qt
+        from pydm.gui.widgets import ElidedLabel
+        label = ElidedLabel("Comment utiliser <b>gras</b> et <br> en HTML", max_lines=2)
+        self.assertEqual(label.textFormat(), Qt.PlainText)
+        self.assertIn("<b>", label.text())
+
+    def test_texte_selectionnable_sans_coupures(self):
+        from PySide6.QtCore import Qt
+        from pydm.gui.progress import ProgressDialog
+        from pydm.gui.widgets import DetailPanel
+        panel = DetailPanel()
+        self.addCleanup(panel.deleteLater)
+        self.assertFalse(panel.label.textInteractionFlags() & Qt.TextSelectableByMouse)  # liens seulement
+        self.assertTrue(panel.label.textInteractionFlags() & Qt.LinksAccessibleByMouse)
+        from pydm.gui.window import MainWindow
+        from tests.test_gui_window import Factory
+        w = MainWindow(self.settings, factory=Factory())
+        self.addCleanup(w.deleteLater)
+        d = ProgressDialog(self.task(), w)
+        self.addCleanup(d.deleteLater)
+        self.assertFalse(d.values["Statut"].textInteractionFlags() & Qt.TextSelectableByMouse)
+
 if __name__ == "__main__":
     unittest.main()

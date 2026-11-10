@@ -32,6 +32,7 @@ class ElidedLabel(QLabel):
         super().__init__(parent)
         self.max_lines = max_lines
         self._full = ""
+        self.setTextFormat(Qt.PlainText)       # un titre « <b>…</b> » s'affiche tel quel
         self.setText(text)
 
     def full_text(self):
@@ -59,9 +60,15 @@ class ElidedLabel(QLabel):
             line.setLineWidth(width)
             spans.append((line.textStart(), line.textLength()))
         layout.endLayout()
-        lines = [text[s:s + n].replace(ZWSP, "").strip() for s, n in spans]
+        units = text.encode("utf-16-le")       # QTextLayout compte en UTF-16 (un émoji = 2 unités)
+
+        def part(start, length=None):
+            end = len(units) if length is None else 2 * (start + length)
+            return units[2 * start:end].decode("utf-16-le", errors="ignore").replace(ZWSP, "")
+        lines = [part(s, n).strip() for s, n in spans]
+        lines = [line for line in lines if line] or [""]
         if len(lines) > self.max_lines:
-            rest = text[spans[self.max_lines - 1][0]:].replace(ZWSP, "")
+            rest = part(spans[self.max_lines - 1][0])
             lines = lines[:self.max_lines - 1] + [self.fontMetrics().elidedText(rest, Qt.ElideRight, width)]
         return lines or [""]
 
@@ -137,7 +144,8 @@ class DetailPanel(QWidget):
         lay.setContentsMargins(12, 8, 12, 8)
         self.label = QLabel()
         self.label.setTextFormat(Qt.RichText)
-        self.label.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        # liens cliquables, texte non sélectionnable : il contient des coupures invisibles (« Copier le lien »)
+        self.label.setTextInteractionFlags(Qt.LinksAccessibleByMouse | Qt.LinksAccessibleByKeyboard)
         self.label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.label.setWordWrap(True)
         self.label.linkActivated.connect(lambda url: QDesktopServices.openUrl(QUrl(url)))
