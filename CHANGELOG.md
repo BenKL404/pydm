@@ -7,6 +7,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-10
+
 ### Changed
 
 - New visual identity: toolbar actions are flat two-tone illustrations with one
@@ -145,7 +147,8 @@ First public version.
   interception, video button, context menu, cookie and referrer forwarding.
 - Native messaging host and per-user installer.
 
-[Unreleased]: https://github.com/BenKL404/pydm/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/BenKL404/pydm/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/BenKL404/pydm/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/BenKL404/pydm/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/BenKL404/pydm/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/BenKL404/pydm/compare/v1.1.0...v1.2.0
