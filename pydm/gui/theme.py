@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Kokou Bernard KPEDZI
-"""Thème clair / sombre, icônes SVG recolorées et logo de PyDM."""
+"""Thème clair / sombre, icônes et illustrations SVG aux couleurs du thème, logo de PyDM."""
 import os
 
 from PySide6.QtCore import QByteArray, QRectF, Qt
@@ -8,6 +8,10 @@ from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPalette, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 
 ICONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icons")
+ILLUSTRATIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "illustrations")
+# repères des dessins à deux tons : corps (ardoise) et détail (blanc), selon le thème ; accents fixes
+MARKERS = {"light": {"#010101": "#334155", "#fefefe": "#ffffff"},
+           "dark": {"#010101": "#cbd5e1", "#fefefe": "#0f172a"}}
 TYPE_COLORS = {"video": "#a78bfa", "music": "#f472b6", "document": "#60a5fa", "image": "#fb923c",
                "archive": "#fbbf24", "program": "#34d399", "other": "#94a3b8"}
 STATE_COLORS = {"done": "#22c55e", "paused": "#eab308", "error": "#ef4444"}
@@ -36,12 +40,37 @@ def accent():
     return QColor(colors()["accent"])
 
 
-def _svg(name, color=None):
-    with open(os.path.join(ICONS_DIR, name + ".svg"), encoding="utf-8") as f:
+def marker_colors():
+    return MARKERS["dark" if is_dark() else "light"]
+
+
+def _svg(name, color=None, folder=None):
+    with open(os.path.join(folder or ICONS_DIR, name + ".svg"), encoding="utf-8") as f:
         text = f.read()
+    for marker, value in marker_colors().items():
+        text = text.replace(marker, value)
     if color:
         text = text.replace("currentColor", color)
     return QSvgRenderer(QByteArray(text.encode()))
+
+
+def illustration(name, width, dpr=1.0):
+    """Illustration aux couleurs du thème, `width` pixels logiques de large, nette en haute densité."""
+    key = ("illustration", name, width, dpr, is_dark())
+    if key not in _cache:
+        renderer = _svg(name, folder=ILLUSTRATIONS_DIR)
+        box = renderer.viewBoxF()
+        height = round(width * box.height() / box.width()) if box.width() else width
+        img = QImage(round(width * dpr), round(height * dpr), QImage.Format_ARGB32_Premultiplied)
+        img.fill(Qt.transparent)
+        p = QPainter(img)
+        p.setRenderHint(QPainter.Antialiasing)
+        renderer.render(p, QRectF(0, 0, img.width(), img.height()))
+        p.end()
+        pix = QPixmap.fromImage(img)
+        pix.setDevicePixelRatio(dpr)
+        _cache[key] = pix
+    return _cache[key]
 
 
 def _icon(renderer):
@@ -63,7 +92,7 @@ def _icon(renderer):
 def icon(name, color=None):
     """Icône de l'interface ; le glyphe prend `color` (par défaut la couleur du texte du thème)."""
     color = color or colors()["text"]
-    key = (name, color)
+    key = (name, color, is_dark())
     if key not in _cache:
         _cache[key] = _icon(_svg(name, color))
     return _cache[key]
