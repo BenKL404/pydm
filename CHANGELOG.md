@@ -7,6 +7,14 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-11-10
+
+### Fixed
+
+- Release builds: the CI could not install Python 3.9 on the new Ubuntu 26.04
+  runners, so 1.5.0 shipped without the AppImage and the Windows installer.
+  1.5.1 has the same content as 1.5.0, with all downloads.
+
 ## [1.5.0] - 2026-11-10
 
 ### Changed
@@ -147,7 +155,8 @@ First public version.
   interception, video button, context menu, cookie and referrer forwarding.
 - Native messaging host and per-user installer.
 
-[Unreleased]: https://github.com/BenKL404/pydm/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/BenKL404/pydm/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/BenKL404/pydm/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/BenKL404/pydm/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/BenKL404/pydm/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/BenKL404/pydm/compare/v1.2.0...v1.3.0
