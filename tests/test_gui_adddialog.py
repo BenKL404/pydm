@@ -354,5 +354,17 @@ class DialogMinorTest(DialogCase):
         self.assertEqual(dlg.thumb.pixmap().toImage().pixelColor(5, 5).name(), "#123456")
 
 
+
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class DialogArtTest(DialogCase):
+    def test_vignette_selon_le_cas(self):
+        for res, art in ((result(kind="error", error="x", choices=[]), "lien-brise"),
+                         (result(kind="error", error="contenu protégé par DRM", drm=True, choices=[]), "cadenas"),
+                         (result(), None)):
+            with self.subTest(art=art):
+                dlg = self.dialog(res)
+                self.wait_filled(dlg)
+                self.assertEqual(dlg.thumb_art, art)
+
 if __name__ == "__main__":
     unittest.main()

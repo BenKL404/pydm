@@ -7,6 +7,21 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- New visual identity: toolbar actions are flat two-tone illustrations with one
+  colour per action (green resume, amber pause, violet "start now" rocket, red
+  bin, alarm-clock scheduler…), following the light or dark theme.
+- Empty list, empty filter and empty search now show an illustration with a
+  short explanation; the welcome message and the add window (link error, DRM)
+  use illustrations too.
+
+### Fixed
+
+- Very long titles or links without spaces no longer widen the main, add and
+  progress windows beyond the screen; the add window shows the title on two
+  lines with the full title as a tooltip.
+
 ## [1.4.0] - 2026-10-22
 
 ### Added

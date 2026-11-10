@@ -76,5 +76,12 @@ class WelcomeTest(unittest.TestCase):
             self.gui_app.forget_bundle_qt_paths()
             self.assertIn("QT_PLUGIN_PATH", os.environ)
 
+    def test_illustration_installe(self):
+        from pydm.gui import theme
+        dlg = self.welcome.WelcomeDialog()
+        self.addCleanup(dlg.deleteLater)
+        expected = theme.illustration("installe", 150, dlg.devicePixelRatioF())
+        self.assertEqual(dlg.iconPixmap().toImage(), expected.toImage())
+
 if __name__ == "__main__":
     unittest.main()

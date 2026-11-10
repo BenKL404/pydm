@@ -54,6 +54,7 @@ class AddDialog(QDialog):
         self.results_q = queue.Queue()      # (index, résultat) issus des threads d'analyse
         self.thumb_q = queue.Queue()        # miniature YouTube chargée sans attendre l'analyse
         self.has_thumb = False
+        self.thumb_art = None               # illustration montrée à la place de la miniature (erreur, DRM)
         self.page_title = title
         self.closed = False
         self.started_at = time.monotonic()
@@ -239,6 +240,8 @@ class AddDialog(QDialog):
         if r["kind"] == "error":
             self.info_label.setText(breakable(r["error"]))
             self.info_label.setStyleSheet(f"color: {theme.STATE_COLORS['error']};")
+            self.thumb_art = "cadenas" if r.get("drm") else "lien-brise"
+            self.thumb.setPixmap(theme.illustration(self.thumb_art, 128, self.devicePixelRatioF()))
             if r.get("drm"):
                 self.download_btn.setEnabled(False)
                 self.later_btn.setEnabled(False)

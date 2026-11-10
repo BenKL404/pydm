@@ -15,7 +15,7 @@ class WelcomeDialog(QMessageBox):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("PyDM")
-        self.setIconPixmap(theme.logo().pixmap(64, 64))
+        self.setIconPixmap(theme.illustration("installe", 150, self.devicePixelRatioF()))
         self.setText("<b>PyDM est installé</b>")
         self.setInformativeText("Il est dans le menu des applications, et l'extension du navigateur peut "
                                 "maintenant lui envoyer vos téléchargements.")
