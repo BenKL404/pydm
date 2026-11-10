@@ -1,15 +1,88 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Kokou Bernard KPEDZI
-"""Panneau de détail du téléchargement sélectionné et mini-courbe de débit."""
+"""Panneau de détail du téléchargement sélectionné, mini-courbe de débit, textes longs."""
 import html
+import re
 from collections import deque
 
 from PySide6.QtCore import QPointF, QSize, Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QGuiApplication, QPainter, QPen, QPolygonF
+from PySide6.QtGui import QDesktopServices, QGuiApplication, QPainter, QPen, QPolygonF, QTextLayout, QTextOption
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
 
 from ..util import human
 from . import theme
+
+
+ZWSP = "\u200b"
+
+
+def breakable(text, run=30, chunk=24):
+    """Texte où les longues suites sans espace (URL, noms) peuvent passer à la ligne : un QLabel ne
+    coupe qu'aux espaces, et sinon impose leur largeur à toute la fenêtre. Coupures invisibles."""
+    def cut(m):
+        parts = [p for p in re.split(r"(?<=[/?&=,._\-])", m.group(0)) if p]
+        return ZWSP.join(ZWSP.join(p[i:i + chunk] for i in range(0, len(p), chunk)) for p in parts)
+    return re.sub(r"\S{%d,}" % run, cut, text or "")
+
+
+class ElidedLabel(QLabel):
+    """Texte sur `max_lines` lignes au plus, « … » à la fin, texte complet en infobulle."""
+
+    def __init__(self, text="", max_lines=2, parent=None):
+        super().__init__(parent)
+        self.max_lines = max_lines
+        self._full = ""
+        self.setText(text)
+
+    def full_text(self):
+        return self._full
+
+    def setText(self, text):
+        self._full = text or ""
+        self.setToolTip(self._full)
+        self._show(self.width())
+        self.updateGeometry()
+
+    def _lines(self, width):
+        width = max(width, 40)
+        text = breakable(self._full)
+        layout = QTextLayout(text, self.font())
+        option = QTextOption()
+        option.setWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+        layout.setTextOption(option)
+        spans = []
+        layout.beginLayout()
+        while True:
+            line = layout.createLine()
+            if not line.isValid():
+                break
+            line.setLineWidth(width)
+            spans.append((line.textStart(), line.textLength()))
+        layout.endLayout()
+        lines = [text[s:s + n].replace(ZWSP, "").strip() for s, n in spans]
+        if len(lines) > self.max_lines:
+            rest = text[spans[self.max_lines - 1][0]:].replace(ZWSP, "")
+            lines = lines[:self.max_lines - 1] + [self.fontMetrics().elidedText(rest, Qt.ElideRight, width)]
+        return lines or [""]
+
+    def _show(self, width):
+        super().setText("\n".join(self._lines(width)))
+
+    def resizeEvent(self, event):
+        self._show(event.size().width())
+        super().resizeEvent(event)
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        return len(self._lines(width)) * self.fontMetrics().lineSpacing()
+
+    def sizeHint(self):
+        return QSize(320, self.heightForWidth(320))
+
+    def minimumSizeHint(self):
+        return QSize(60, self.fontMetrics().lineSpacing())
 
 
 class DetailPanel(QWidget):
@@ -49,9 +122,9 @@ class DetailPanel(QWidget):
             self.label.setText(f"<span style='color:{theme.colors()['muted']}'>Aucun téléchargement sélectionné</span>")
             return
         muted = theme.colors()["muted"]
-        folder = html.escape(task.folder)
+        folder = html.escape(breakable(task.folder))
         rows = [
-            ("Lien", html.escape(task.url)),
+            ("Lien", html.escape(breakable(task.url))),
             ("Dossier", f'<a href="{html.escape(QUrl.fromLocalFile(task.folder).toString(), quote=True)}">'
                         f"{folder}</a>"),
             ("Taille", human(task.size)),
@@ -61,8 +134,8 @@ class DetailPanel(QWidget):
         ]
         if task.error:
             rows.append(("Erreur", f"<span style='color:{theme.STATE_COLORS['error']}'>"
-                                   f"{html.escape(task.error)}</span>"))
-        name = html.escape(task.name or task.url)
+                                   f"{html.escape(breakable(task.error))}</span>"))
+        name = html.escape(breakable(task.name or task.url))
         body = "".join(f"<tr><td style='color:{muted};padding-right:14px'>{k}</td><td>{v}</td></tr>"
                        for k, v in rows)
         self.label.setText(f"<b>{name}</b><table style='margin-top:4px'>{body}</table>")

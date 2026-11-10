@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QDialog, QFormLayou
 
 from ..util import human, human_time
 from . import theme
+from .widgets import ElidedLabel, breakable
 
 FIELDS = ("Lien", "Statut", "Taille", "Reçu", "Vitesse", "Temps restant", "Reprise")
 
@@ -63,12 +64,12 @@ class ProgressDialog(QDialog):
         form = QFormLayout()
         self.values = {}
         for name in FIELDS:
-            label = QLabel()
-            label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            label = ElidedLabel(task.url, max_lines=2) if name == "Lien" else QLabel()
+            if name != "Lien":
+                label.setTextInteractionFlags(Qt.TextSelectableByMouse)
             self.values[name] = label
             form.addRow(name, label)
-        self.values["Lien"].setText(task.url)
-        self.values["Lien"].setWordWrap(True)
+        self.values["Statut"].setWordWrap(True)         # message d'erreur parfois long
         lay.addLayout(form)
         self.bar = QProgressBar()
         self.bar.setRange(0, 1000)
@@ -144,7 +145,7 @@ class ProgressDialog(QDialog):
         ratio = t.done / t.size if t.size else None
         pct = f"{100 * ratio:.0f} %" if ratio is not None else ""
         name = t.name or t.url
-        self.values["Statut"].setText(t.status)
+        self.values["Statut"].setText(breakable(t.status))
         self.values["Taille"].setText(human(t.size))
         self.values["Reçu"].setText(f"{human(t.done)}" + (f" ({pct})" if pct else ""))
         self.values["Vitesse"].setText(f"{human(t.speed)}/s" if t.running else "")

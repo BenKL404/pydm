@@ -22,6 +22,7 @@ from ..engine import QUALITIES
 from ..filetypes import category
 from ..util import expand_path, human, human_time, safe_filename
 from . import theme
+from .widgets import ElidedLabel, breakable
 
 TIMEOUT = 30
 TYPE_NAMES = {"video": "Vidéo", "music": "Musique", "document": "Document", "image": "Image", "archive": "Archive",
@@ -114,8 +115,7 @@ class AddDialog(QDialog):
         self.thumb.setPixmap(theme.type_icon("other").pixmap(32, 32))
         head.addWidget(self.thumb)
         text = QVBoxLayout()
-        self.title_label = QLabel(self.page_title or self.urls[0])
-        self.title_label.setWordWrap(True)
+        self.title_label = ElidedLabel(self.page_title or self.urls[0], max_lines=2)
         self.title_label.setStyleSheet("font-weight: 600; font-size: 13px;")
         self.info_label = QLabel("Analyse…")
         self.info_label.setWordWrap(True)
@@ -237,7 +237,7 @@ class AddDialog(QDialog):
     def _show_single(self, r):
         muted = theme.colors()["muted"]
         if r["kind"] == "error":
-            self.info_label.setText(r["error"])
+            self.info_label.setText(breakable(r["error"]))
             self.info_label.setStyleSheet(f"color: {theme.STATE_COLORS['error']};")
             if r.get("drm"):
                 self.download_btn.setEnabled(False)
