@@ -6,6 +6,11 @@ Linux : socket Unix privée. Windows : canal nommé propre à l'utilisateur, ave
 dans les deux sens par une clé privée (%APPDATA%\\PyDM\\ipc.key) : un autre compte qui occuperait le
 nom du canal ne reçoit rien. Un échange = un message JSON et sa réponse. Transport recopié dans
 pydm_host.py (qui reste autonome).
+
+Un client peut aussi demander l'action « bridge » : la connexion reste alors ouverte et c'est
+PyDM qui pose des questions au navigateur (`request`), chaque demande portant un identifiant que
+la réponse reprend. C'est le seul chemin par lequel PyDM obtient des cookies à jour : lui seul ne
+peut pas les renouveler.
 """
 import getpass
 import hashlib
@@ -13,6 +18,7 @@ import json
 import os
 import socket
 import threading
+import uuid
 
 WINDOWS = os.name == "nt"
 _ENV_DIR = os.environ.get("PYDM_CONFIG_DIR")
@@ -102,6 +108,101 @@ def client_handshake(conn, key):
     deliver_challenge(conn, key)
 
 
+BRIDGE = "bridge"               # action qui transforme la connexion en pont permanent
+_BRIDGES = []
+_BRIDGES_LOCK = threading.Lock()
+
+
+class BridgeError(Exception):
+    """L'extension a répondu mais n'a pas pu satisfaire la demande (onglet fermé, refus…)."""
+
+
+class Bridge:
+    """Connexion ouverte vers un navigateur : PyDM envoie, l'extension répond, par identifiant."""
+
+    def __init__(self, send, close):
+        self._send = send                   # écrit un message JSON sur la connexion
+        self._close = close
+        self._waiting = {}                  # identifiant → [événement, réponse]
+        self._lock = threading.Lock()
+        self.alive = True
+
+    def deliver(self, msg):
+        """Réponse reçue : réveille le demandeur (un identifiant inconnu est ignoré)."""
+        with self._lock:
+            slot = self._waiting.pop(msg.get("id"), None)
+        if slot:
+            slot[1] = msg
+            slot[0].set()
+
+    def ask(self, payload, timeout):
+        ident = uuid.uuid4().hex
+        slot = [threading.Event(), None]
+        with self._lock:
+            self._waiting[ident] = slot
+        try:
+            self._send(dict(payload, id=ident))
+        except OSError:
+            self.drop()
+            raise
+        if not slot[0].wait(timeout):
+            with self._lock:
+                self._waiting.pop(ident, None)
+            raise TimeoutError("le navigateur n'a pas répondu")
+        if slot[1] is None:
+            raise OSError("le navigateur s'est déconnecté")
+        return slot[1]
+
+    def drop(self):
+        """Pont rompu : tous ceux qui attendent sont réveillés les mains vides."""
+        self.alive = False
+        with self._lock:
+            waiting, self._waiting = list(self._waiting.values()), {}
+        for slot in waiting:
+            slot[0].set()
+        try:
+            self._close()
+        except OSError:
+            pass
+
+
+def _pump(bridge, messages):
+    """Sert un pont jusqu'à sa rupture : chaque message reçu est une réponse."""
+    with _BRIDGES_LOCK:
+        _BRIDGES.append(bridge)
+    try:
+        for msg in messages:
+            if isinstance(msg, dict):
+                bridge.deliver(msg)
+    except (OSError, EOFError, ValueError):
+        pass
+    finally:
+        with _BRIDGES_LOCK:
+            if bridge in _BRIDGES:
+                _BRIDGES.remove(bridge)
+        bridge.drop()
+
+
+def request(action, timeout=5, **payload):
+    """Pose une question au navigateur par le pont ouvert ; OSError si aucun n'est connecté."""
+    with _BRIDGES_LOCK:
+        bridges = [b for b in _BRIDGES if b.alive]
+    if not bridges:
+        raise OSError("aucun navigateur connecté")
+    reply = bridges[-1].ask(dict(payload, action=action), timeout)      # le plus récent
+    if reply.get("error"):
+        raise BridgeError(str(reply["error"]))
+    return reply
+
+
+def _parse(raw):
+    try:
+        msg = json.loads(raw or "null")
+    except ValueError:
+        return None
+    return msg if isinstance(msg, dict) else None
+
+
 def _reply(handler, data):
     try:
         return handler(json.loads(data))
@@ -121,8 +222,15 @@ def start_ipc(handler):
             with conn:
                 try:
                     server_handshake(conn, key)
-                    if conn.poll(5):
-                        conn.send_bytes(json.dumps(_reply(handler, conn.recv_bytes())).encode())
+                    if not conn.poll(5):
+                        return
+                    raw = conn.recv_bytes()
+                    if (_parse(raw) or {}).get("action") == BRIDGE:
+                        conn.send_bytes(b'{"ok": true}')
+                        send = lambda msg: conn.send_bytes(json.dumps(msg).encode())  # noqa: E731
+                        _pump(Bridge(send, conn.close), _pipe_messages(conn))
+                        return
+                    conn.send_bytes(json.dumps(_reply(handler, raw)).encode())
                 except (OSError, EOFError, AuthenticationError):
                     pass
 
@@ -144,13 +252,42 @@ def start_ipc(handler):
     os.chmod(SOCKET_PATH, 0o600)
     srv.listen(8)
 
+    def serve(conn):
+        with conn:
+            f = conn.makefile()
+            raw = f.readline()
+            if (_parse(raw) or {}).get("action") == BRIDGE:
+                conn.sendall(b'{"ok": true}\n')
+                lock = threading.Lock()
+
+                def send(msg):
+                    with lock:
+                        conn.sendall((json.dumps(msg) + "\n").encode())
+                _pump(Bridge(send, conn.close), _socket_messages(f))
+                return
+            conn.sendall((json.dumps(_reply(handler, raw)) + "\n").encode())
+
     def loop():
         while True:
-            conn, _ = srv.accept()
-            with conn:
-                reply = _reply(handler, conn.makefile().readline())
-                conn.sendall((json.dumps(reply) + "\n").encode())
+            try:
+                conn, _ = srv.accept()
+            except OSError:
+                continue
+            threading.Thread(target=serve, args=(conn,), daemon=True).start()
     threading.Thread(target=loop, daemon=True).start()
+
+
+def _socket_messages(f):
+    while True:
+        line = f.readline()
+        if not line:
+            return
+        yield _parse(line)
+
+
+def _pipe_messages(conn):
+    while True:
+        yield _parse(conn.recv_bytes())
 
 
 def ipc_send(msg, timeout=3):
