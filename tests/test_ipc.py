@@ -145,7 +145,10 @@ class BridgeTest(unittest.TestCase):
                 return json.loads(f.readline() or "null")
             except socket.timeout:
                 return None
-        return ask, lambda msg: sock.sendall((json.dumps(msg) + "\n").encode()), sock.close
+        def close():
+            f.close()           # makefile garde le descripteur : fermer la socket ne suffit pas
+            sock.close()
+        return ask, lambda msg: sock.sendall((json.dumps(msg) + "\n").encode()), close
 
     def request(self, **kw):
         """Lance ipc.request dans un fil (il attend la réponse de l'extension)."""

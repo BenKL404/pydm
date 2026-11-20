@@ -166,11 +166,15 @@ class Bridge:
             pass
 
 
-def _pump(bridge, messages):
-    """Sert un pont jusqu'à sa rupture : chaque message reçu est une réponse."""
+def _pump(bridge, messages, ack):
+    """Sert un pont jusqu'à sa rupture : chaque message reçu est une réponse.
+
+    L'accusé de réception part une fois le pont inscrit : le recevoir signifie qu'il est utilisable.
+    """
     with _BRIDGES_LOCK:
         _BRIDGES.append(bridge)
     try:
+        ack()
         for msg in messages:
             if isinstance(msg, dict):
                 bridge.deliver(msg)
@@ -226,9 +230,9 @@ def start_ipc(handler):
                         return
                     raw = conn.recv_bytes()
                     if (_parse(raw) or {}).get("action") == BRIDGE:
-                        conn.send_bytes(b'{"ok": true}')
                         send = lambda msg: conn.send_bytes(json.dumps(msg).encode())  # noqa: E731
-                        _pump(Bridge(send, conn.close), _pipe_messages(conn))
+                        _pump(Bridge(send, conn.close), _pipe_messages(conn),
+                              lambda: conn.send_bytes(b'{"ok": true}'))
                         return
                     conn.send_bytes(json.dumps(_reply(handler, raw)).encode())
                 except (OSError, EOFError, AuthenticationError):
@@ -257,13 +261,13 @@ def start_ipc(handler):
             f = conn.makefile()
             raw = f.readline()
             if (_parse(raw) or {}).get("action") == BRIDGE:
-                conn.sendall(b'{"ok": true}\n')
                 lock = threading.Lock()
 
                 def send(msg):
                     with lock:
                         conn.sendall((json.dumps(msg) + "\n").encode())
-                _pump(Bridge(send, conn.close), _socket_messages(f))
+                _pump(Bridge(send, conn.close), _socket_messages(f),
+                      lambda: conn.sendall(b'{"ok": true}\n'))
                 return
             conn.sendall((json.dumps(_reply(handler, raw)) + "\n").encode())
 
