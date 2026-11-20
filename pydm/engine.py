@@ -444,6 +444,9 @@ class VideoDownload(_Task):
             "noplaylist": True,
             "retries": 10,
             "fragment_retries": 10,
+            # un fragment manquant laisserait un fichier troué sans aucune erreur visible
+            "skip_unavailable_fragments": False,
+            "retry_sleep_functions": {"fragment": lambda n: min(30, 2 ** n)},
             "quiet": True,
             "no_warnings": True,
             "noprogress": True,

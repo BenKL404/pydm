@@ -230,6 +230,16 @@ class VideoCookiesTest(unittest.TestCase):
         self.assertTrue(friendly_error("HTTP Error 403: Forbidden").startswith("Accès refusé par le serveur (403)"))
 
 
+    def test_fragments_manquants_refuses(self):
+        """Un fragment indisponible doit faire échouer la vidéo, pas livrer un fichier troué."""
+        _, calls = self.run_video("https://exemple.fr/master.m3u8", {}, parts=5)
+        opts = calls[0]["opts"]
+        self.assertIs(opts["skip_unavailable_fragments"], False)
+        self.assertEqual(opts["concurrent_fragment_downloads"], 5)
+        sleep = opts["retry_sleep_functions"]["fragment"]
+        self.assertEqual([sleep(1), sleep(4), sleep(9)], [2, 16, 30])
+
+
 class AttemptsTest(unittest.TestCase):
     def test_ytdlp_attempts_sans_cookies(self):
         self.assertEqual(list(ytdlp_attempts("https://a.fr/v", {"User-Agent": "x"}, "Aucun")), [{}])
