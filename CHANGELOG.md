@@ -15,6 +15,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
   the area that keeps it visible. It is now placed inside the *visible* part of
   the video, follows it while scrolling or resizing, is hidden when nothing of
   the video is left on screen, and never moves out from under the pointer.
+- Browser extension: players that wrap their `<video>` in an open shadow root
+  were invisible to the badge, which never appeared on those pages.
 
 ## [1.6.0] - 2026-11-20
 

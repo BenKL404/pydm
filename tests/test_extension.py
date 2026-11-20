@@ -87,6 +87,40 @@ class PlacementTest(unittest.TestCase):
 
 
 @unittest.skipUnless(shutil.which("node"), "node absent")
+class ShadowDomTest(unittest.TestCase):
+    """Les lecteurs qui encapsulent leur <video> dans un shadow root ouvert doivent être vus."""
+
+    def collect(self, script):
+        src = open(os.path.join(ROOT, "extension", "content.js")).read()
+        code = re.search(r"^  function collect\(.*?^  \}", src, re.M | re.S).group(0)
+        out = subprocess.run(["node", "-e", code + "\n" + script], capture_output=True, text=True, timeout=30)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return json.loads(out.stdout)
+
+    def test_videos_des_shadow_roots_ouverts(self):
+        got = self.collect("""
+          const node = (vids, hosts = []) => ({
+            querySelectorAll: (sel) => (sel === "video" ? vids : hosts),
+          });
+          const profond = node(["profonde"]);
+          const interne = node(["interne"], [{ shadowRoot: profond }]);
+          const racine = node(["page"], [{ shadowRoot: interne }, {}, { shadowRoot: node([]) }]);
+          console.log(JSON.stringify(collect(racine, [], { left: 1000 })));
+        """)
+        self.assertEqual(got, ["page", "interne", "profonde"])
+
+    def test_budget_borne_la_recherche(self):
+        got = self.collect("""
+          const node = (vids, hosts = []) => ({
+            querySelectorAll: (sel) => (sel === "video" ? vids : hosts),
+          });
+          const enfants = Array.from({ length: 50 }, (_, i) => ({ shadowRoot: node(["v" + i]) }));
+          console.log(JSON.stringify(collect(node([], enfants), [], { left: 3 })));
+        """)
+        self.assertEqual(got, ["v0", "v1", "v2"])       # arrêt net, pas de parcours sans fin
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
 class VideoPageTest(unittest.TestCase):
     def test_pages_video(self):
         src = open(os.path.join(ROOT, "extension", "background.js")).read()
