@@ -7,6 +7,15 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Browser extension: the "Télécharger avec PyDM" badge could end up out of
+  reach — entirely off-screen on a player wider than the window, or straddling
+  the edge of a narrow video, where moving towards it took the pointer out of
+  the area that keeps it visible. It is now placed inside the *visible* part of
+  the video, follows it while scrolling or resizing, is hidden when nothing of
+  the video is left on screen, and never moves out from under the pointer.
+
 ## [1.6.0] - 2026-11-20
 
 ### Added

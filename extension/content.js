@@ -4,7 +4,7 @@
   window.__pydmLoaded = true;
   const api = globalThis.browser ?? chrome;
   let enabled = true;
-  let host, button, label, current, hideTimer, resetTimer, lastScan = 0;
+  let host, button, label, current, hideTimer, resetTimer, lastScan = 0, hovered = false, queued = false;
 
   api.storage.local.get("videoButton").then((s) => { enabled = s.videoButton !== false; });
   api.storage.onChanged.addListener((c) => {
@@ -13,6 +13,19 @@
 
   const LABEL = "Télécharger avec PyDM";
   const WIDTH = 240;
+  const SIZE = 34;        // pastille repliée : carré de 34 px (cf. la feuille de style)
+  const INSET = 10;
+
+  // Place la pastille dans la partie *visible* de la vidéo. Se contenter du rectangle de la vidéo
+  // la rendait inatteignable : hors de l'écran sur un lecteur qui déborde à droite, et à cheval
+  // sur le bord d'une vidéo étroite, où aller la cliquer fait sortir le curseur de la zone qui
+  // la maintient affichée. Renvoie null quand il ne reste rien de cliquable.
+  function spot(rect, view, width = WIDTH, size = SIZE, inset = INSET) {
+    const left = Math.max(rect.left, 0), right = Math.min(rect.right, view.width);
+    const top = Math.max(rect.top, 0), bottom = Math.min(rect.bottom, view.height);
+    if (right - left < size + 2 * inset || bottom - top < size + 2 * inset) return null;
+    return { left: right - inset - width, top: Math.min(top + inset, bottom - inset - size) };
+  }
 
   function build() {
     host = document.createElement("div");
@@ -58,7 +71,9 @@
     button = root.querySelector("button");
     label = root.querySelector(".label");
     button.addEventListener("click", onClick);
-    host.addEventListener("mouseenter", () => clearTimeout(hideTimer));
+    // le curseur est sur la pastille : ni effacement, ni déplacement sous le doigt
+    host.addEventListener("pointerenter", () => { hovered = true; clearTimeout(hideTimer); });
+    host.addEventListener("pointerleave", () => { hovered = false; });
   }
 
   function show(state, text) {
@@ -68,25 +83,42 @@
 
   function place(video) {
     if (!host) build();
+    if (hovered && current === video) return;       // ne pas déplacer la pastille sous le curseur
+    const view = { width: innerWidth, height: innerHeight };
+    // largeur fixe, pastille calée à droite : elle s'allonge vers la gauche sans changer d'ancrage
+    const at = spot(video.getBoundingClientRect(), view);
+    if (!at) {
+      hide();
+      return;
+    }
     const parent = document.fullscreenElement || document.documentElement;
     if (host.parentNode !== parent) parent.appendChild(host);
-    const r = video.getBoundingClientRect();
-    // largeur fixe, pastille calée à droite : elle s'allonge vers la gauche sans changer d'ancrage
-    const x = Math.max(4, r.right - 10 - WIDTH), y = Math.max(4, r.top + 10);
-    host.style.left = `${x}px`;
-    host.style.top = `${y}px`;
+    host.style.left = `${at.left}px`;
+    host.style.top = `${at.top}px`;
     host.style.display = "flex";
     // une page qui transforme <html> ou le conteneur plein écran décale « fixed » : on corrige
     const h = host.getBoundingClientRect();
-    if (Math.abs(h.left - x) > 1 || Math.abs(h.top - y) > 1) {
-      host.style.left = `${2 * x - h.left}px`;
-      host.style.top = `${2 * y - h.top}px`;
+    if (Math.abs(h.left - at.left) > 1 || Math.abs(h.top - at.top) > 1) {
+      host.style.left = `${2 * at.left - h.left}px`;
+      host.style.top = `${2 * at.top - h.top}px`;
     }
     current = video;
   }
 
+  // la vidéo bouge (défilement, redimensionnement, plein écran) : la pastille la suit au lieu
+  // d'attendre le prochain mouvement de souris, posée sur un emplacement devenu faux
+  function follow() {
+    if (queued || !current || !enabled) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      if (current && enabled) place(current);
+    });
+  }
+
   function hide() {
     if (host) host.style.display = "none";
+    hovered = false;
     current = null;
   }
 
@@ -105,11 +137,15 @@
     if (v) {
       clearTimeout(hideTimer);
       place(v);
-    } else if (current && !host.matches(":hover")) {
+    } else if (current && !hovered) {
       clearTimeout(hideTimer);
       hideTimer = setTimeout(hide, 1500);
     }
   }, { passive: true, capture: true });
+
+  addEventListener("scroll", follow, { passive: true, capture: true });
+  addEventListener("resize", follow, { passive: true });
+  document.addEventListener("fullscreenchange", follow);
 
   async function onClick(e) {
     e.preventDefault();

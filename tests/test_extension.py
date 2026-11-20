@@ -31,6 +31,61 @@ CASES = {
 }
 
 
+VIEW = {"width": 1280, "height": 800}
+# chaque cas : rectangle de la vidéo, fenêtre, et si la pastille doit s'afficher
+PLACEMENTS = {
+    "pleine_page": ({"left": 100, "top": 100, "right": 900, "bottom": 550}, True),
+    "deborde_a_droite": ({"left": 900, "top": 100, "right": 1500, "bottom": 500}, True),
+    "video_etroite": ({"left": 40, "top": 60, "right": 240, "bottom": 200}, True),
+    "haut_hors_ecran": ({"left": 100, "top": -300, "right": 900, "bottom": 250}, True),
+    "plus_grande_que_l_ecran": ({"left": -200, "top": -200, "right": 1600, "bottom": 1200}, True),
+    "bas_de_page": ({"left": 100, "top": 700, "right": 900, "bottom": 1400}, True),
+    "sortie_par_le_haut": ({"left": 100, "top": -900, "right": 900, "bottom": -100}, False),
+    "sliver_visible": ({"left": 100, "top": 780, "right": 900, "bottom": 1200}, False),
+}
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class PlacementTest(unittest.TestCase):
+    """La pastille doit rester dans la partie *visible* de la vidéo, sinon elle est inatteignable."""
+
+    def spots(self):
+        src = open(os.path.join(ROOT, "extension", "content.js")).read()
+        code = re.search(r"^  const WIDTH = .*?^  function spot\(.*?^  \}", src, re.M | re.S).group(0)
+        cases = {name: {"rect": rect, "view": VIEW} for name, (rect, _) in PLACEMENTS.items()}
+        script = (code + "\nconst cases = " + json.dumps(cases) + ";\n"
+                  "console.log(JSON.stringify(Object.fromEntries("
+                  "Object.entries(cases).map(([n, c]) => [n, spot(c.rect, c.view)]))));")
+        out = subprocess.run(["node", "-e", script], capture_output=True, text=True, timeout=30)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(re.search(r"const SIZE = (\d+)", src).group(1), "34")
+        return json.loads(out.stdout), int(re.search(r"const WIDTH = (\d+)", src).group(1)), 34
+
+    def test_pastille_toujours_dans_la_video_visible(self):
+        got, width, size = self.spots()
+        for name, (rect, visible) in PLACEMENTS.items():
+            with self.subTest(name):
+                place = got[name]
+                if not visible:
+                    self.assertIsNone(place, "rien de cliquable : la pastille doit être cachée")
+                    continue
+                self.assertIsNotNone(place)
+                # la pastille est calée à droite d'un conteneur de `width` : voilà son carré
+                right, top = place["left"] + width, place["top"]
+                left, bottom = right - size, top + size
+                vl, vt = max(rect["left"], 0), max(rect["top"], 0)
+                vr, vb = min(rect["right"], VIEW["width"]), min(rect["bottom"], VIEW["height"])
+                self.assertGreaterEqual(left, vl, "déborde à gauche de la vidéo visible")
+                self.assertLessEqual(right, vr, "déborde à droite de la vidéo visible")
+                self.assertGreaterEqual(top, vt, "au-dessus de la vidéo visible")
+                self.assertLessEqual(bottom, vb, "sous la vidéo visible")
+
+    def test_calee_en_haut_a_droite(self):
+        got, width, size = self.spots()
+        plein = got["pleine_page"]
+        self.assertEqual((plein["left"] + width, plein["top"]), (890, 110))
+
+
 @unittest.skipUnless(shutil.which("node"), "node absent")
 class VideoPageTest(unittest.TestCase):
     def test_pages_video(self):
