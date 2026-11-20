@@ -15,7 +15,7 @@ from datetime import datetime
 from email.message import Message
 
 from .filetypes import category
-from .scheduler import LIMITER
+from .scheduler import LIMITER, RateLimiter
 from .util import safe_filename, unique_path
 
 CHUNK = 64 * 1024
@@ -86,6 +86,19 @@ class _Task:
     def pause(self):
         self.stop_evt.set()
 
+    @property
+    def limit_kbps(self):
+        """Limite propre à ce téléchargement, en Ko/s (0 : aucune) ; modifiable en cours."""
+        return round(self.limiter.rate / 1024)
+
+    @limit_kbps.setter
+    def limit_kbps(self, kbps):
+        self.limiter.rate = max(0, int(kbps)) * 1024
+
+    def _throttle(self, n):
+        self.limiter.consume(n, self.stop_evt)      # limite de ce téléchargement, puis limite globale
+        LIMITER.consume(n, self.stop_evt)
+
     def wait(self, timeout=None):
         if self._thread:
             self._thread.join(timeout)
@@ -109,6 +122,7 @@ class Download(_Task):
         self.added = time.time()
         self.want = "now"      # now, later, force, stop (voir scheduler)
         self.lock = threading.Lock()
+        self.limiter = RateLimiter()
         self.stop_evt = threading.Event()
         self._thread = None
         if name:
@@ -224,7 +238,7 @@ class Download(_Task):
                         buf = r.read(CHUNK)
                         if not buf:
                             break
-                        LIMITER.consume(len(buf), self.stop_evt)
+                        self._throttle(len(buf))
                         with self.lock:      # réserve la zone (le segment peut être redécoupé)
                             if seg[1] >= 0:
                                 buf = buf[:max(0, self._remaining(seg))]
@@ -342,6 +356,7 @@ class VideoDownload(_Task):
         self.error = None
         self.added = time.time()
         self.want = "now"      # now, later, force, stop (voir scheduler)
+        self.limiter = RateLimiter()
         self.stop_evt = threading.Event()
         self._rate_lock = threading.Lock()
         self._last_bytes = self._last_file = None
@@ -390,7 +405,7 @@ class VideoDownload(_Task):
                     delta = got - self._last_bytes
                     self._last_bytes = max(self._last_bytes, got)
             if delta > 0:
-                LIMITER.consume(delta, self.stop_evt)
+                self._throttle(delta)
             self.done = got
             self.size = d.get("total_bytes") or d.get("total_bytes_estimate") or self.size
             self.speed = d.get("speed") or 0.0
@@ -579,6 +594,8 @@ def entry_from_task(t):
     e = {"url": t.url, "folder": t.folder, "parts": t.parts, "name": t.name, "headers": t.headers,
          "added": datetime.fromtimestamp(t.added).isoformat(timespec="seconds"),
          "want": "stop" if t.finished else t.want}     # un fichier terminé puis déplacé n'est pas repris
+    if t.limit_kbps:
+        e["limit_kbps"] = t.limit_kbps
     if isinstance(t, VideoDownload):
         e.update(kind="video", quality=t.quality, browser=t.browser, fmt=t.fmt, stem=t.stem)
     return e
@@ -594,6 +611,9 @@ def task_from_entry(e):
         t = Download(e["url"], e["folder"], e.get("parts", 8), e.get("name"), e.get("headers"))
     want = e.get("want")
     t.want = "now" if want in ("now", "force") else ("later" if want == "later" else "stop")
+    limit = e.get("limit_kbps")
+    if isinstance(limit, int) and limit > 0:
+        t.limit_kbps = limit
     try:
         t.added = datetime.fromisoformat(e["added"]).timestamp()
     except (KeyError, TypeError, ValueError):

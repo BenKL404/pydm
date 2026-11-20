@@ -173,5 +173,59 @@ class NameHintTest(unittest.TestCase):
             d = engine.Download("https://a.fr/x", tempfile.gettempdir(), name_hint="dossier/a:b*.zip")
         self.assertEqual(d.name_hint, "a_b_.zip")
 
+
+class TaskLimitTest(unittest.TestCase):
+    """Limite de vitesse propre à un téléchargement, en plus de la limite globale."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = tmp.name
+        self.data = os.urandom(1024 * 1024)
+        url, stop = serve(self.data)
+        self.addCleanup(stop)
+        self.url = url + "/fichier.bin"
+
+    def test_limite_par_tache(self):
+        d = Download(self.url, self.dir, parts=4)
+        d.limit_kbps = 256
+        self.assertEqual(d.limiter.rate, 256 * 1024)
+        t = time.time()
+        d.start()
+        wait(d)
+        self.assertEqual(d.status, "Terminé")
+        self.assertGreaterEqual(time.time() - t, 3.0)          # 1 Mo à 256 Ko/s
+
+    def test_limite_changee_en_cours(self):
+        d = Download(self.url, self.dir, parts=4)
+        d.limit_kbps = 64                                       # 1 Mo prendrait 16 s
+        t = time.time()
+        d.start()
+        time.sleep(0.5)
+        d.limit_kbps = 0                                        # levée pendant que les connexions tournent
+        wait(d)
+        self.assertEqual(d.status, "Terminé")
+        self.assertLess(time.time() - t, 5)
+
+    def test_valeurs_invalides(self):
+        d = Download(self.url, self.dir)
+        self.assertEqual(d.limit_kbps, 0)
+        d.limit_kbps = -5
+        self.assertEqual((d.limit_kbps, d.limiter.rate), (0, 0))
+
+    def test_session_limite(self):
+        from pydm.engine import entry_from_task, task_from_entry
+        d = Download(self.url, self.dir)
+        self.assertNotIn("limit_kbps", entry_from_task(d))
+        d.limit_kbps = 512
+        e = entry_from_task(d)
+        self.assertEqual(e["limit_kbps"], 512)
+        self.assertEqual(task_from_entry(e).limit_kbps, 512)
+        for bad in ({}, {"limit_kbps": "x"}, {"limit_kbps": -3}):
+            entry = dict(e)
+            entry.pop("limit_kbps")
+            entry.update(bad)
+            self.assertEqual(task_from_entry(entry).limit_kbps, 0)
+
 if __name__ == "__main__":
     unittest.main()

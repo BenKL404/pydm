@@ -164,6 +164,17 @@ class VideoCookiesTest(unittest.TestCase):
                 d._hook({"status": "downloading", "downloaded_bytes": n, "filename": name})
         self.assertEqual([c.args[0] for c in lim.consume.call_args_list], [2000, 400])
 
+    def test_hook_limite_de_la_video(self):
+        d = VideoDownload("https://vimeo.com/1", "/tmp")
+        d.limit_kbps = 300
+        with mock.patch("pydm.engine.LIMITER") as lim, mock.patch.object(d.limiter, "consume") as own:
+            for n in (1000, 3000):
+                d._hook({"status": "downloading", "downloaded_bytes": n, "filename": "v.mp4"})
+        self.assertEqual([c.args[0] for c in own.call_args_list], [2000])
+        self.assertEqual([c.args[0] for c in lim.consume.call_args_list], [2000])
+        from pydm.engine import entry_from_task, task_from_entry
+        self.assertEqual(task_from_entry(entry_from_task(d)).limit_kbps, 300)
+
 
     def test_sans_ytdlp_erreur(self):
         from pydm.scheduler import Scheduler

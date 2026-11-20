@@ -12,6 +12,7 @@ class FakeTask:
         self.url = url or f"https://exemple.fr/{name}"
         self.added = time.time()
         self.want = "stop"      # les tests de modèle ne passent pas par la file
+        self.limit_kbps = 0     # pas de limite propre
 
     @property
     def finished(self):

@@ -127,4 +127,5 @@ class RateLimiter:
             (self.sleep or stop_evt.wait)(min(wait, 0.25))
 
 
-LIMITER = RateLimiter()
+LIMITER = RateLimiter()                 # limite globale ; chaque téléchargement a aussi la sienne
+LIMIT_PRESETS = (256, 512, 1024, 2048, 5120, 10240)     # valeurs proposées dans les menus, en Ko/s
