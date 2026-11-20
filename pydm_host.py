@@ -6,6 +6,10 @@
 Le navigateur lance ce script et lui passe un message (4 octets de longueur
 + JSON). Il le transmet à PyDM par sa socket Unix, en démarrant PyDM au
 besoin, puis renvoie la réponse à l'extension.
+
+Premier message « bridge » : le navigateur a ouvert un port permanent. Ce
+processus vit alors aussi longtemps que le port et relaie dans les deux sens,
+pour que PyDM puisse à son tour interroger l'extension (cookies à jour).
 """
 import getpass
 import glob
@@ -13,10 +17,12 @@ import hashlib
 import json
 import ntpath
 import os
+import queue
 import socket
 import struct
 import subprocess
 import sys
+import threading
 import time
 
 WINDOWS = os.name == "nt"
@@ -88,6 +94,133 @@ def _send(msg):
         return json.loads(s.makefile().readline() or "{}")
 
 
+class Link:
+    """Connexion ouverte vers PyDM ; même interface sous Linux (socket) et Windows (canal)."""
+
+    def __init__(self, conn, stream=None):
+        self.conn, self.stream = conn, stream
+
+    def send(self, msg):
+        if self.stream is None:
+            self.conn.send_bytes(json.dumps(msg).encode())
+        else:
+            self.conn.sendall((json.dumps(msg) + "\n").encode())
+
+    def messages(self):
+        while True:
+            if self.stream is None:
+                try:
+                    raw = self.conn.recv_bytes()
+                except (EOFError, OSError):
+                    return
+            else:
+                raw = self.stream.readline()
+                if not raw:
+                    return
+            try:
+                msg = json.loads(raw)
+            except ValueError:
+                continue
+            if isinstance(msg, dict):
+                yield msg
+
+    def close(self):
+        try:
+            self.conn.close()
+        except OSError:
+            pass
+
+
+def open_bridge():
+    """Ouvre le pont vers PyDM (None s'il n'est pas là : on ne le lance jamais pour un pont)."""
+    hello = json.dumps({"action": "bridge"})
+    if WINDOWS:
+        from multiprocessing.connection import Client, answer_challenge, deliver_challenge
+        try:
+            with open(KEY_FILE, "rb") as f:
+                key = f.read()
+            conn = Client(pipe_address(_ENV_DIR, current_user()), family="AF_PIPE")
+        except (OSError, ValueError):
+            return None
+        try:
+            if not conn.poll(5):
+                raise TimeoutError
+            answer_challenge(conn, key)
+            deliver_challenge(conn, key)
+            conn.send_bytes(hello.encode())
+            if not conn.poll(5):
+                raise TimeoutError
+            conn.recv_bytes()
+        except Exception:  # noqa: BLE001 - PyDM absent, occupé ou canal d'un autre compte
+            conn.close()
+            return None
+        return Link(conn)
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        sock.settimeout(5)
+        sock.connect(SOCKET_PATH)
+        sock.sendall((hello + "\n").encode())
+        stream = sock.makefile()
+        if not stream.readline():
+            raise OSError("pont refusé")
+    except OSError:
+        sock.close()
+        return None
+    sock.settimeout(None)
+    return Link(sock, stream)
+
+
+def bridge(connect=open_bridge, pause=1.0, limit=10.0):
+    """Port permanent : relaie PyDM → extension et retour, jusqu'à la fermeture du port.
+
+    PyDM peut être fermé quand le navigateur s'ouvre, et s'ouvrir plus tard : on retente, en
+    espaçant, sans jamais le lancer — ouvrir un navigateur n'est pas une demande de téléchargement.
+    """
+    replies, stopped = queue.Queue(), threading.Event()
+
+    def from_extension():
+        try:
+            while True:
+                msg = read_message()
+                if msg is None:
+                    break
+                replies.put(msg)
+        except Exception:  # noqa: BLE001 - entrée fermée par le navigateur
+            pass
+        stopped.set()
+    threading.Thread(target=from_extension, daemon=True).start()
+
+    delay = pause
+    while not stopped.is_set():
+        link = connect()
+        if link is None:
+            if stopped.wait(delay):
+                break
+            delay = min(limit, delay * 1.5)
+            continue
+        delay, broken = pause, threading.Event()
+
+        def to_extension(link=link, broken=broken):
+            try:
+                for msg in link.messages():
+                    send_message(msg)
+            except Exception:  # noqa: BLE001 - sortie fermée : le navigateur est parti
+                stopped.set()
+            finally:
+                broken.set()
+        threading.Thread(target=to_extension, daemon=True).start()
+        while not stopped.is_set() and not broken.is_set():
+            try:
+                msg = replies.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            try:
+                link.send(msg)
+            except OSError:
+                break
+        link.close()
+
+
 def launch_command():
     """PyDM installé sous Windows (pydm.exe à côté de l'hôte), depuis son AppImage, sinon install.sh."""
     if WINDOWS and getattr(sys, "frozen", False):
@@ -157,6 +290,8 @@ def main():
         return
     if msg.get("action") == "ping":
         send_message({"ok": True, "ytdlp": bool(getattr(sys, "frozen", False) or glob.glob(YTDLP))})
+    elif msg.get("action") == "bridge":
+        bridge()
     else:
         send_message(forward(msg))
 

@@ -1,9 +1,12 @@
 import json
 import os
+import selectors
+import socket
 import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest import mock
@@ -168,3 +171,164 @@ class HostTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def framed(msg):
+    raw = json.dumps(msg).encode()
+    return struct.pack("<I", len(raw)) + raw
+
+
+def read_framed(stream, timeout=10):
+    """Lit un message encadré sur un tube, sans bloquer indéfiniment."""
+    sel = selectors.DefaultSelector()
+    sel.register(stream, selectors.EVENT_READ)
+    try:
+        def take(n):
+            data, end = b"", time.time() + timeout
+            while len(data) < n:
+                if not sel.select(max(0.0, end - time.time())):
+                    raise AssertionError("rien reçu de l'hôte natif")
+                chunk = os.read(stream.fileno(), n - len(data))
+                if not chunk:
+                    raise AssertionError("l'hôte natif a fermé sa sortie")
+                data += chunk
+            return data
+        (length,) = struct.unpack("<I", take(4))
+        return json.loads(take(length))
+    finally:
+        sel.close()
+
+
+class FakePyDM:
+    """Faux PyDM : accepte le pont et donne la main au test sur la connexion."""
+
+    def __init__(self, path):
+        self.path = path
+        self.srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.srv.bind(path)
+        self.srv.listen(4)
+        self.ready = threading.Event()
+        self.conn = self.file = None
+        threading.Thread(target=self._accept, daemon=True).start()
+
+    def _accept(self):
+        try:
+            conn, _ = self.srv.accept()
+        except OSError:
+            return
+        self.conn = conn
+        self.file = conn.makefile()
+        if json.loads(self.file.readline()).get("action") == "bridge":
+            conn.sendall(b'{"ok": true}\n')
+            self.ready.set()
+
+    def ask(self, msg):
+        self.conn.sendall((json.dumps(msg) + "\n").encode())
+
+    def reply(self, timeout=10):
+        self.conn.settimeout(timeout)
+        return json.loads(self.file.readline() or "null")
+
+    def close(self):
+        for s in (self.conn, self.srv):
+            try:
+                s and s.close()
+            except OSError:
+                pass
+
+
+@unittest.skipIf(os.name == "nt", "socket Unix (POSIX)")
+class BridgeHostTest(unittest.TestCase):
+    """Le port persistant relaie les demandes de PyDM vers l'extension, et ses réponses en retour."""
+
+    def start(self, with_pydm=True):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        cfg = os.path.join(tmp.name, "cfg")
+        os.makedirs(cfg)
+        pydm = FakePyDM(os.path.join(cfg, "pydm.sock")) if with_pydm else None
+        if pydm:
+            self.addCleanup(pydm.close)
+        env = dict(os.environ, HOME=tmp.name, PYDM_CONFIG_DIR=cfg)
+        proc = subprocess.Popen([sys.executable, HOST], stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, env=env)
+        self.addCleanup(proc.kill)
+        proc.stdin.write(framed({"action": "bridge"}))
+        proc.stdin.flush()
+        return proc, pydm, cfg
+
+    def test_relais_dans_les_deux_sens(self):
+        proc, pydm, _ = self.start()
+        self.assertTrue(pydm.ready.wait(10), "le pont n'a pas été ouvert")
+        pydm.ask({"id": "42", "action": "refresh", "url": "https://a.fr/f", "referer": "https://a.fr/p"})
+        demande = read_framed(proc.stdout)
+        self.assertEqual(demande, {"id": "42", "action": "refresh",
+                                   "url": "https://a.fr/f", "referer": "https://a.fr/p"})
+        proc.stdin.write(framed({"id": "42", "headers": {"Cookie": "SID=9"}}))
+        proc.stdin.flush()
+        self.assertEqual(pydm.reply(), {"id": "42", "headers": {"Cookie": "SID=9"}})
+
+    def test_fin_du_port_arrete_l_hote(self):
+        proc, pydm, _ = self.start()
+        self.assertTrue(pydm.ready.wait(10))
+        proc.stdin.close()
+        self.assertEqual(proc.wait(10), 0)
+
+    def test_attend_pydm_sans_le_lancer(self):
+        """Ouvrir un navigateur n'est pas une demande de téléchargement : PyDM n'est pas lancé."""
+        proc, _, cfg = self.start(with_pydm=False)
+        lance = os.path.join(os.path.dirname(cfg), ".local", "bin")
+        os.makedirs(lance)
+        with open(os.path.join(lance, "pydm"), "w") as f:
+            f.write("#!/bin/sh\ntouch %s\n" % os.path.join(cfg, "lance"))
+        os.chmod(os.path.join(lance, "pydm"), 0o755)
+        time.sleep(1.5)
+        self.assertIsNone(proc.poll(), "l'hôte doit rester en vie en attendant PyDM")
+        self.assertFalse(os.path.exists(os.path.join(cfg, "lance")))
+        pydm = FakePyDM(os.path.join(cfg, "pydm.sock"))     # PyDM s'ouvre enfin
+        self.addCleanup(pydm.close)
+        self.assertTrue(pydm.ready.wait(20), "le pont doit se raccrocher tout seul")
+
+
+@unittest.skipIf(os.name == "nt", "socket Unix (POSIX)")
+class BridgeEndToEndTest(unittest.TestCase):
+    """Le vrai PyDM, le vrai hôte natif, et le test dans le rôle de l'extension."""
+
+    def test_pydm_interroge_l_extension(self):
+        import importlib
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        cfg = os.path.join(tmp.name, "cfg")
+        with mock.patch.dict(os.environ, {"PYDM_CONFIG_DIR": cfg}):
+            import pydm.ipc
+            ipc = importlib.reload(pydm.ipc)
+            self.addCleanup(lambda: importlib.reload(pydm.ipc))
+            ipc.start_ipc(lambda msg: {"ok": True})
+            proc = subprocess.Popen([sys.executable, HOST], stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE,
+                                    env=dict(os.environ, HOME=tmp.name, PYDM_CONFIG_DIR=cfg))
+            self.addCleanup(proc.kill)
+            proc.stdin.write(framed({"action": "bridge"}))
+            proc.stdin.flush()
+
+            out = {}
+            def demander():
+                try:
+                    out["reply"] = ipc.request("refresh", url="https://a.fr/f", referer="https://a.fr/p",
+                                               timeout=15)
+                except Exception as e:  # noqa: BLE001
+                    out["error"] = e
+            end = time.time() + 10
+            while not ipc._BRIDGES and time.time() < end:
+                time.sleep(0.05)
+            self.assertTrue(ipc._BRIDGES, "l'hôte natif n'a pas ouvert le pont")
+            t = threading.Thread(target=demander, daemon=True)
+            t.start()
+            demande = read_framed(proc.stdout)
+            self.assertEqual(demande["action"], "refresh")
+            self.assertEqual(demande["url"], "https://a.fr/f")
+            proc.stdin.write(framed({"id": demande["id"], "headers": {"Cookie": "SID=9"}}))
+            proc.stdin.flush()
+            t.join(15)
+            self.assertIsNone(out.get("error"))
+            self.assertEqual(out["reply"]["headers"], {"Cookie": "SID=9"})
