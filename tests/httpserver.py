@@ -9,14 +9,19 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 BLOCK = 64 * 1024
 
 
-def serve(data, ranges=True, delay=0.0, headers=None):
-    """Démarre un serveur ; retourne (url_de_base, arret)."""
+def serve(data, ranges=True, delay=0.0, headers=None, seen=None):
+    """Démarre un serveur ; retourne (url_de_base, arret).
+
+    `seen` : liste où sont ajoutés les en-têtes de chaque requête reçue.
+    """
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
 
         def do_GET(self):
+            if seen is not None:
+                seen.append(dict(self.headers.items()))
             start, end = 0, len(data) - 1
             m = re.match(r"bytes=(\d+)-(\d*)$", self.headers.get("Range", ""))
             if ranges and m:

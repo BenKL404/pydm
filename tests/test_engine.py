@@ -4,7 +4,8 @@ import time
 import unittest
 from unittest import mock
 
-from pydm.engine import Download
+from pydm import fingerprint
+from pydm.engine import Download, probe
 from tests.httpserver import serve
 
 
@@ -229,3 +230,34 @@ class TaskLimitTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UserAgentTest(unittest.TestCase):
+    """L'UA du navigateur reste prioritaire ; sinon celui de la plateforme, jamais « PyDM »."""
+
+    def setUp(self):
+        fingerprint.reset()
+        self.addCleanup(fingerprint.reset)
+        self.seen = []
+        url, stop = serve(b"0123456789", seen=self.seen)
+        self.addCleanup(stop)
+        self.url = url + "/fichier.bin"
+
+    def test_ua_du_navigateur_prioritaire_puis_epingle(self):
+        probe(self.url, {"User-Agent": "NavigateurTest/9", "Referer": "https://exemple.fr/page"})
+        probe(self.url)                 # même hôte, lien collé à la main : on garde le même UA
+        self.assertEqual([h["User-Agent"] for h in self.seen], ["NavigateurTest/9"] * 2)
+        self.assertEqual(self.seen[0]["Referer"], "https://exemple.fr/page")
+
+    def test_ua_par_defaut_sans_navigateur(self):
+        probe(self.url)
+        self.assertEqual(self.seen[0]["User-Agent"], fingerprint.default_ua())
+        self.assertNotIn("PyDM", self.seen[0]["User-Agent"])
+
+    def test_download_utilise_l_ua_du_navigateur(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Download(self.url, tmp, parts=1, headers={"User-Agent": "NavigateurTest/9"})
+            d.start()
+            wait(d)
+        self.assertEqual(d.status, "Terminé", d.status)
+        self.assertEqual({h["User-Agent"] for h in self.seen}, {"NavigateurTest/9"})

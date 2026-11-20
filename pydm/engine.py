@@ -15,13 +15,14 @@ from datetime import datetime
 from email.message import Message
 
 from .filetypes import category
+from .fingerprint import default_ua, pinned_ua
 from .scheduler import LIMITER, RateLimiter
 from .util import safe_filename, unique_path
 
 CHUNK = 64 * 1024
 MIN_SPLIT = 2 * 1024 * 1024
 MAX_RETRIES = 6
-UA = "Mozilla/5.0 (X11; Linux x86_64) PyDM/1.0"
+UA = default_ua()       # UA de repli ; par requête, voir fingerprint.pinned_ua
 _NAMES = threading.Lock()     # choix du nom + création du .part : atomique entre téléchargements
 QUALITIES = {
     "Meilleure": "bv*+ba/b",
@@ -39,7 +40,9 @@ VIDEO_HOSTS = re.compile(
 
 def probe(url, headers=None):
     """Retourne (taille, accepte_les_plages, nom_de_fichier)."""
-    req = urllib.request.Request(url, headers={"User-Agent": UA, **(headers or {}), "Range": "bytes=0-0"})
+    headers = dict(headers or {})
+    req = urllib.request.Request(url, headers={"User-Agent": pinned_ua(url, headers.get("User-Agent")),
+                                               **headers, "Range": "bytes=0-0"})
     with urllib.request.urlopen(req, timeout=20) as r:
         final = r.geturl()
         cd = r.headers.get("Content-Disposition", "")
@@ -226,7 +229,8 @@ class Download(_Task):
                 return
             if not self.ranges:
                 seg[2] = 0
-            headers = {"User-Agent": UA, **self.headers}
+            headers = {"User-Agent": pinned_ua(self.url, self.headers.get("User-Agent")),
+                       **self.headers}
             if self.ranges:
                 headers["Range"] = f"bytes={seg[0] + seg[2]}-{seg[1]}"
             try:
@@ -573,7 +577,9 @@ def looks_like_video(url, headers=None):
     if VIDEO_HOSTS.search(parsed.hostname or "") or re.search(r"\.(m3u8|mpd)$", parsed.path, re.I):
         return True
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": UA, **(headers or {}), "Range": "bytes=0-0"})
+        head = dict(headers or {})
+        req = urllib.request.Request(url, headers={"User-Agent": pinned_ua(url, head.get("User-Agent")),
+                                                   **head, "Range": "bytes=0-0"})
         with urllib.request.urlopen(req, timeout=15) as r:
             ctype = r.headers.get("Content-Type", "").lower()
     except Exception:  # noqa: BLE001
