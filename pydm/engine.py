@@ -40,11 +40,25 @@ VIDEO_HOSTS = re.compile(
     r"bilibili\.com|rumble\.com|odysee\.com|bandcamp\.com|arte\.tv|france\.tv|streamable\.com)$", re.I)
 
 
+class RangeEncodingError(IOError):
+    """Le serveur a compressé une réponse partielle : les offsets ne veulent plus rien dire."""
+
+
+def _check_encoding(response):
+    enc = (response.headers.get("Content-Encoding") or "").strip().lower()
+    if enc and enc != "identity":
+        raise RangeEncodingError(
+            f"le serveur compresse une réponse partielle ({enc}) : les positions demandées ne "
+            f"correspondent plus aux octets reçus")
+
+
 def probe(url, headers=None):
     """Retourne (taille, accepte_les_plages, nom_de_fichier)."""
     headers = dict(headers or {})
+    # identity imposé après les en-têtes du navigateur : une plage compressée est inexploitable
     req = urllib.request.Request(url, headers={"User-Agent": pinned_ua(url, headers.get("User-Agent")),
-                                               **headers, "Range": "bytes=0-0"})
+                                               **headers, "Range": "bytes=0-0",
+                                               "Accept-Encoding": "identity"})
     with urllib.request.urlopen(req, timeout=20) as r:
         final = r.geturl()
         cd = r.headers.get("Content-Disposition", "")
@@ -278,6 +292,7 @@ class Download(_Task):
                        **self.headers}
             if self.ranges:
                 headers["Range"] = f"bytes={seg[0] + seg[2]}-{seg[1]}"
+                headers["Accept-Encoding"] = "identity"     # cf. probe : plage et compression
             if not policy.acquire(self.stop_evt):
                 return
             read, rejected = 0, False
@@ -286,6 +301,8 @@ class Download(_Task):
                 with urllib.request.urlopen(req, timeout=30) as r, open(self.part_path, "r+b") as f:
                     if self.ranges and r.status != 206:
                         raise IOError("le serveur a ignoré la demande de plage")
+                    if self.ranges:
+                        _check_encoding(r)
                     while not self.stop_evt.is_set():
                         buf = r.read(CHUNK)
                         if not buf:
@@ -311,6 +328,9 @@ class Download(_Task):
                     raise IOError("connexion fermée prématurément")
             except Exception as e:  # noqa: BLE001 - toute erreur réseau déclenche une relance
                 rejected = True
+                if isinstance(e, RangeEncodingError):
+                    self._fail(e)       # écrire ces octets corromprait le fichier
+                    return
                 fatal, throttle, retry_after = classify(e)
                 if fatal:
                     self._fail(e)

@@ -355,3 +355,36 @@ class ServeurRestrictifTest(unittest.TestCase):
         wait(d, 60)
         self.assertTrue(d.error, d.status)
         self.assertLessEqual(len(seen), 3)              # trois analyses au plus, pas d'acharnement
+
+
+class EncodageDesPlagesTest(unittest.TestCase):
+    """Une réponse partielle compressée décale tous les offsets : il faut refuser, pas écrire."""
+
+    def setUp(self):
+        fingerprint.reset()
+        netpolicy.reset()
+        self.addCleanup(fingerprint.reset)
+        self.addCleanup(netpolicy.reset)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = tmp.name
+        self.data = os.urandom(8 * 1024 * 1024)
+
+    def test_identity_impose_sur_les_requetes_de_plage(self):
+        seen = []
+        url, stop = serve(self.data, seen=seen)
+        self.addCleanup(stop)
+        probe(url + "/f.bin", {"Accept-Encoding": "gzip, deflate, br"})
+        self.assertEqual(seen[0]["Accept-Encoding"], "identity")
+        self.assertEqual(seen[0]["Range"], "bytes=0-0")
+
+    def test_reponse_partielle_compressee_refusee(self):
+        url, stop = serve(self.data, encoding="gzip")
+        self.addCleanup(stop)
+        d = Download(url + "/f.bin", self.dir, parts=2)
+        d.start()
+        wait(d, 60)
+        self.assertTrue(d.error, d.status)
+        self.assertIn("compress", d.error)
+        self.assertFalse(os.path.exists(d.path))        # rien n'est livré
+        self.assertEqual(d.status, f"Erreur : {d.error}")
