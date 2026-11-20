@@ -15,6 +15,7 @@ import urllib.request
 from datetime import datetime
 from email.message import Message
 
+from . import ipc
 from .filetypes import category
 from .fingerprint import default_ua, pinned_ua
 from .netpolicy import classify, policy_for
@@ -171,6 +172,7 @@ class Download(_Task):
         self.want = "now"      # now, later, force, stop (voir scheduler)
         self.lock = threading.Lock()
         self._mono = False          # repli mono-connexion (serveur refusant le parallélisme)
+        self._refreshed = False     # en-têtes déjà redemandés au navigateur pour ce démarrage
         self.limiter = RateLimiter()
         self.stop_evt = threading.Event()
         self._thread = None
@@ -344,6 +346,8 @@ class Download(_Task):
                         self._collapse_segments()
                     if policy.floor_hit and read == 0:
                         # refusé seul et sans un octet reçu : le parallélisme n'est pas la cause
+                        if self._refresh():
+                            continue
                         tries += 1
                         if tries > MAX_RETRIES:
                             self._fail(e)
@@ -364,6 +368,28 @@ class Download(_Task):
         self.error = friendly_error(str(exc), url=self.url)
         self.stop_evt.set()
 
+    def _refresh(self):
+        """Redemande au navigateur les en-têtes du lien : lui seul a la session vivante.
+
+        Une seule fois par démarrage : sans ce garde-fou, un lien définitivement mort
+        transformerait PyDM en boucle de requêtes vers l'extension.
+        """
+        if self._refreshed:
+            return False
+        self._refreshed = True
+        try:
+            reply = ipc.request("refresh", url=self.url, referer=self.headers.get("Referer", ""))
+        except Exception:  # noqa: BLE001 - navigateur fermé, port absent, délai dépassé
+            return False
+        fresh = reply.get("headers")
+        if not isinstance(fresh, dict):
+            return False
+        fresh = {k: v for k, v in fresh.items() if isinstance(k, str) and isinstance(v, str)}
+        if not fresh:
+            return False
+        self.headers = {**self.headers, **fresh}
+        return True
+
     def _probe(self):
         """Analyse initiale : un 403/429 ici est réessayé, le reste est remonté tel quel."""
         policy = policy_for(self.url, self.parts)
@@ -374,10 +400,13 @@ class Download(_Task):
                 _, throttle, retry_after = classify(e)
                 if not throttle or attempt == 2 or self.stop_evt.is_set():
                     raise
+                if self._refresh():     # session peut-être périmée depuis l'ajout du lien
+                    continue
                 _, delay = policy.on_reject(getattr(e, "code", 0), retry_after)
                 self.stop_evt.wait(delay)
 
     def _run(self):
+        self._mono = self._refreshed = False        # remis à zéro avant l'analyse, qui peut rafraîchir
         try:
             self.status = "Connexion…"
             size, ranges, name = self._probe()
@@ -388,7 +417,6 @@ class Download(_Task):
             return
 
         self.status = "Téléchargement"
-        self._mono = False
         threads = []
 
         def launch(seg):

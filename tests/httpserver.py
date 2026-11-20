@@ -10,13 +10,14 @@ BLOCK = 64 * 1024
 
 
 def serve(data, ranges=True, delay=0.0, headers=None, seen=None, max_concurrent=None,
-          throttle_first=0, retry_after=None, encoding=None):
+          throttle_first=0, retry_after=None, encoding=None, require_cookie=None):
     """Démarre un serveur ; retourne (url_de_base, arret).
 
     `seen` : liste où sont ajoutés les en-têtes de chaque requête reçue.
     `max_concurrent` : au-delà, les requêtes simultanées reçoivent 403 (anti-aspiration).
     `throttle_first` : les N premières requêtes reçoivent 429 (avec `retry_after` si fourni).
     `encoding` : valeur de Content-Encoding annoncée (sans compresser : serveur fautif).
+    `require_cookie` : sans ce Cookie, la requête reçoit 403 (session périmée).
     """
     state = {"active": 0, "count": 0}
     guard = threading.Lock()
@@ -51,6 +52,8 @@ def serve(data, ranges=True, delay=0.0, headers=None, seen=None, max_concurrent=
                 extra = {"Retry-After": str(retry_after)} if retry_after is not None else {}
                 return self.refuse(429, extra)
             if over:
+                return self.refuse(403)
+            if require_cookie and require_cookie not in self.headers.get("Cookie", ""):
                 return self.refuse(403)
             start, end = 0, len(data) - 1
             m = re.match(r"bytes=(\d+)-(\d*)$", self.headers.get("Range", ""))

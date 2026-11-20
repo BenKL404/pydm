@@ -9,6 +9,11 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Sessions that expire while a download waits: PyDM now keeps a permanent link
+  to the browser extension and asks it for fresh headers when a server refuses
+  a download it could serve before. Cookies captured when the link was added
+  are no longer stale when the queue starts the download hours later. Asked
+  once per start; if no browser is connected, nothing changes.
 - Expiring links: PyDM now reads the deadline a signed link carries (AWS SigV4,
   CloudFront, Akamai tokens, JWT) and says "Ce lien a expiré, rechargez la page"
   instead of reporting an opaque 403. A planned download whose link is already

@@ -388,3 +388,52 @@ class EncodageDesPlagesTest(unittest.TestCase):
         self.assertIn("compress", d.error)
         self.assertFalse(os.path.exists(d.path))        # rien n'est livré
         self.assertEqual(d.status, f"Erreur : {d.error}")
+
+
+class RafraichissementTest(unittest.TestCase):
+    """Session périmée : PyDM demande des en-têtes à jour au navigateur, une seule fois."""
+
+    def setUp(self):
+        netpolicy.reset()
+        fingerprint.reset()
+        self.addCleanup(netpolicy.reset)
+        self.addCleanup(fingerprint.reset)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = tmp.name
+        self.data = os.urandom(4 * 1024 * 1024)
+        penalty = mock.patch("pydm.netpolicy.BASE_PENALTY", 0.05)
+        penalty.start()
+        self.addCleanup(penalty.stop)
+
+    def download(self, reply):
+        url, stop = serve(self.data, require_cookie="SID=2")
+        self.addCleanup(stop)
+        with mock.patch("pydm.ipc.request", **reply) as request:
+            d = Download(url + "/fichier.bin", self.dir, parts=2,
+                         headers={"Cookie": "SID=1", "Referer": "https://a.fr/page"})
+            d.start()
+            wait(d, 60)
+        return d, request
+
+    def test_cookies_renouveles(self):
+        d, request = self.download({"return_value": {"headers": {"Cookie": "SID=2"}}})
+        self.assertEqual(d.status, "Terminé", d.error or d.status)
+        with open(d.path, "rb") as f:
+            self.assertEqual(f.read(), self.data)
+        self.assertEqual(request.call_count, 1)
+        self.assertEqual(request.call_args.args, ("refresh",))
+        self.assertEqual(request.call_args.kwargs["referer"], "https://a.fr/page")
+        self.assertEqual(d.headers["Cookie"], "SID=2")
+        self.assertEqual(d.headers["Referer"], "https://a.fr/page")     # le reste est conservé
+
+    def test_sans_navigateur_une_seule_tentative(self):
+        d, request = self.download({"side_effect": OSError("aucun navigateur connecté")})
+        self.assertTrue(d.error, d.status)
+        self.assertEqual(request.call_count, 1, "pas d'acharnement quand le navigateur est fermé")
+
+    def test_reponse_inutilisable_ignoree(self):
+        d, request = self.download({"return_value": {"headers": "pas un dictionnaire"}})
+        self.assertTrue(d.error, d.status)
+        self.assertEqual(d.headers["Cookie"], "SID=1")
+        self.assertEqual(request.call_count, 1)
