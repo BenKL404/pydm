@@ -332,3 +332,58 @@ class BridgeEndToEndTest(unittest.TestCase):
             t.join(15)
             self.assertIsNone(out.get("error"))
             self.assertEqual(out["reply"]["headers"], {"Cookie": "SID=9"})
+
+
+@unittest.skipIf(os.name == "nt", "socket Unix (POSIX) ; même scénario sous Windows : e2e_windows.ps1")
+class BridgeDownloadTest(unittest.TestCase):
+    """Scénario complet : cookie périmé, refus du serveur, rattrapage par le pont."""
+
+    def test_telechargement_rattrape_par_le_pont(self):
+        import importlib
+        from tests.httpserver import serve
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        cfg = os.path.join(tmp.name, "cfg")
+        with mock.patch.dict(os.environ, {"PYDM_CONFIG_DIR": cfg}):
+            import pydm.ipc
+            ipc = importlib.reload(pydm.ipc)        # recharge sur place : engine voit le même module
+            self.addCleanup(lambda: importlib.reload(pydm.ipc))
+            from pydm import fingerprint, netpolicy
+            from pydm.engine import Download
+            netpolicy.reset()
+            fingerprint.reset()
+            self.addCleanup(netpolicy.reset)
+            self.addCleanup(fingerprint.reset)
+            ipc.start_ipc(lambda msg: {"ok": True})
+
+            proc = subprocess.Popen([sys.executable, HOST], stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE,
+                                    env=dict(os.environ, HOME=tmp.name, PYDM_CONFIG_DIR=cfg))
+            self.addCleanup(proc.kill)
+            proc.stdin.write(framed({"action": "bridge"}))
+            proc.stdin.flush()
+            end = time.time() + 10
+            while not ipc._BRIDGES and time.time() < end:
+                time.sleep(0.05)
+            self.assertTrue(ipc._BRIDGES, "l'hôte natif n'a pas ouvert le pont")
+
+            data = os.urandom(2 * 1024 * 1024)
+            url, stop = serve(data, require_cookie="SID=2")
+            self.addCleanup(stop)
+            d = Download(url + "/protege.bin", tmp.name, parts=2,
+                         headers={"Cookie": "SID=1", "Referer": url + "/page"})
+            d.start()
+            self.addCleanup(d.pause)
+
+            demande = read_framed(proc.stdout)       # PyDM a été refusé : il réclame des en-têtes
+            self.assertEqual(demande["action"], "refresh")
+            self.assertEqual(demande["url"], url + "/protege.bin")
+            proc.stdin.write(framed({"id": demande["id"], "headers": {"Cookie": "SID=2"}}))
+            proc.stdin.flush()
+
+            end = time.time() + 60
+            while d.running and time.time() < end:
+                time.sleep(0.1)
+            self.assertEqual(d.status, "Terminé", d.error or d.status)
+            with open(d.path, "rb") as f:
+                self.assertEqual(f.read(), data)

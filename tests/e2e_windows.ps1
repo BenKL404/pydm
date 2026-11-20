@@ -39,6 +39,32 @@ function Send-Native([hashtable]$Msg) {
     return [Text.Encoding]::UTF8.GetString($bytes, 4, $bytes.Length - 4) | ConvertFrom-Json
 }
 
+function Write-Framed([Diagnostics.Process]$P, [hashtable]$Msg) {
+    $body = [Text.Encoding]::UTF8.GetBytes(($Msg | ConvertTo-Json -Compress))
+    $P.StandardInput.BaseStream.Write([BitConverter]::GetBytes([int]$body.Length), 0, 4)
+    $P.StandardInput.BaseStream.Write($body, 0, $body.Length)
+    $P.StandardInput.BaseStream.Flush()
+}
+
+function Read-Exact([IO.Stream]$S, [int]$N, [int]$Seconds) {
+    $buf = New-Object byte[] $N
+    $got = 0
+    while ($got -lt $N) {
+        $task = $S.ReadAsync($buf, $got, $N - $got)
+        if (-not $task.Wait([TimeSpan]::FromSeconds($Seconds))) { throw "Délai dépassé : lecture du pont" }
+        if ($task.Result -le 0) { throw "Pont fermé par l'hôte natif" }
+        $got += $task.Result
+    }
+    return , $buf       # virgule : sinon PowerShell déroule le tableau d'octets
+}
+
+function Read-Framed([Diagnostics.Process]$P, [int]$Seconds) {
+    $stream = $P.StandardOutput.BaseStream
+    $head = Read-Exact $stream 4 $Seconds
+    $body = Read-Exact $stream ([BitConverter]::ToInt32($head, 0)) $Seconds
+    return [Text.Encoding]::UTF8.GetString($body) | ConvertFrom-Json
+}
+
 Write-Host "== Installation silencieuse"
 $p = Start-Process $Setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-" -PassThru -Wait
 if ($p.ExitCode) { throw "Installation : code $($p.ExitCode)" }
@@ -97,6 +123,39 @@ $target = Join-Path $dl "essai.bin"
 Wait-Until { (Test-Path $target) -and -not (Test-Path "$target.part") -and ((Get-Item $target).Length -eq 3MB) } 90 "téléchargement de essai.bin"
 Write-Host "   téléchargement OK (3 Mo)"
 Stop-Process -Id $http.Id -Force
+
+Write-Host "== Pont permanent : PyDM redemande ses en-têtes au navigateur"
+$urlFile = Join-Path $env:TEMP "pydm-e2e-url.txt"
+Remove-Item $urlFile -ErrorAction SilentlyContinue
+$guard = Start-Process python -ArgumentList (Join-Path $PSScriptRoot "e2e_cookie_server.py"), "3145728", "SID=2" `
+    -PassThru -RedirectStandardOutput $urlFile
+Wait-Until { (Test-Path $urlFile) -and ((Get-Content $urlFile -Raw) -match "^http://") } 30 "serveur protégé par cookie"
+$base = (Get-Content $urlFile -Raw).Trim()
+# l'hôte natif reste ouvert, comme le port runtime.connectNative de l'extension
+$psi = New-Object Diagnostics.ProcessStartInfo (Join-Path $App "pydm-host.exe")
+$psi.Arguments = "chrome-extension://feloklndigmnjlmffbddgcdfigpnbcba/ --parent-window=0"
+$psi.UseShellExecute = $false
+$psi.RedirectStandardInput = $true
+$psi.RedirectStandardOutput = $true
+$bridge = [Diagnostics.Process]::Start($psi)
+Write-Framed $bridge @{ action = "bridge" }
+Start-Sleep -Seconds 4      # le temps que l'hôte s'accroche à PyDM par le canal nommé
+# cookie périmé : le serveur refuse, PyDM doit passer par le pont pour en obtenir un bon
+$r = Send-Native @{ action = "add"; url = "$base/protege.bin"; kind = "file"; headers = @{ Cookie = "SID=1" } }
+if (-not $r.ok) { throw "add (cookie périmé) : $($r | ConvertTo-Json -Compress)" }
+$ask = Read-Framed $bridge 60
+if ($ask.action -ne "refresh") { throw "demande inattendue sur le pont : $($ask | ConvertTo-Json -Compress)" }
+if ($ask.url -ne "$base/protege.bin") { throw "lien inattendu sur le pont : $($ask.url)" }
+if (-not $ask.id) { throw "demande sans identifiant" }
+Write-Framed $bridge @{ id = $ask.id; headers = @{ Cookie = "SID=2" } }
+$protege = Join-Path $dl "protege.bin"
+Wait-Until { (Test-Path $protege) -and -not (Test-Path "$protege.part") -and ((Get-Item $protege).Length -eq 3MB) } `
+    90 "téléchargement après rafraîchissement des en-têtes"
+Write-Host "   en-têtes rafraîchis par le pont, téléchargement OK (3 Mo)"
+$bridge.StandardInput.Close()
+if (-not $bridge.WaitForExit(15000)) { $bridge.Kill(); throw "l'hôte du pont survit à la fermeture du port" }
+Write-Host "   hôte du pont arrêté avec le port"
+Stop-Process -Id $guard.Id -Force
 
 Write-Host "== Désinstallation refusée tant que PyDM tourne"
 if (-not (Get-Process pydm -ErrorAction SilentlyContinue)) { throw "PyDM devrait encore tourner" }
