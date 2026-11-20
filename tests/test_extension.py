@@ -52,7 +52,7 @@ class PlacementTest(unittest.TestCase):
 
     def run_js(self, script):
         src = open(os.path.join(ROOT, "extension", "content.js")).read()
-        code = re.search(r"^  const WIDTH = .*?^  function pickCorner\(.*?^  \}", src, re.M | re.S).group(0)
+        code = re.search(r"^  const WIDTH = .*?^  function near\(.*?^  \}", src, re.M | re.S).group(0)
         out = subprocess.run(["node", "-e", code + "\n" + script], capture_output=True, text=True, timeout=30)
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertEqual(re.search(r"const SIZE = (\d+)", src).group(1), "34")
@@ -72,31 +72,55 @@ class PlacementTest(unittest.TestCase):
         left = at["left"] if at["align"] == "flex-start" else at["left"] + width - size
         return [left, at["top"], left + size, at["top"] + size]
 
-    def test_coin_libre_par_defaut_en_haut_a_gauche(self):
-        """Les boutons du lecteur et ceux de Firefox vivent à droite : on commence à gauche."""
+    def test_au_dessus_de_la_video_par_defaut(self):
+        """Comme IDM : hors de la vidéo, donc hors d'atteinte des commandes du lecteur."""
         at, width, size = self.pick(PLEINE)
+        self.assertEqual((at["corner"], at["align"]), ("above", "flex-start"))
+        gauche, haut, droite, bas = self.carre(at, width, size)
+        self.assertLessEqual(bas, PLEINE["top"], "la pastille mord sur la vidéo")
+        self.assertEqual([gauche, droite], [100, 134], "alignée sur le bord gauche de la vidéo")
+        self.assertGreaterEqual(haut, 0, "sortie par le haut de la fenêtre")
+
+    def test_sans_place_au_dessus_on_rentre_dans_la_video(self):
+        colle_en_haut = {"left": 100, "top": 20, "right": 900, "bottom": 550}
+        at, _, _ = self.pick(colle_en_haut)
         self.assertEqual((at["corner"], at["align"]), ("tl", "flex-start"))
-        self.assertEqual(self.carre(at, width, size), [110, 110, 144, 144])
+
+    def test_au_dessus_occupe_on_rentre_dans_la_video(self):
+        at, _, _ = self.pick(PLEINE, occupes=["above"])
+        self.assertEqual((at["corner"], at["align"]), ("tl", "flex-start"))
 
     def test_coin_occupe_evite(self):
-        at, _, _ = self.pick(PLEINE, occupes=["tl"])
+        at, _, _ = self.pick(PLEINE, occupes=["above", "tl"])
         self.assertEqual((at["corner"], at["align"]), ("tr", "flex-end"))
 
     def test_descend_quand_le_haut_est_pris(self):
-        self.assertEqual(self.pick(PLEINE, occupes=["tl", "tr"])[0]["corner"], "bl")
-        self.assertEqual(self.pick(PLEINE, occupes=["tl", "tr", "bl"])[0]["corner"], "br")
+        self.assertEqual(self.pick(PLEINE, occupes=["above", "tl", "tr"])[0]["corner"], "bl")
+        self.assertEqual(self.pick(PLEINE, occupes=["above", "tl", "tr", "bl"])[0]["corner"], "br")
 
-    def test_tout_occupe_garde_le_coin_habituel(self):
-        """Aucun coin libre : on affiche quand même, plutôt que de disparaître."""
-        at, _, _ = self.pick(PLEINE, occupes=["tl", "tr", "bl", "br"])
-        self.assertEqual(at["corner"], "tl")
+    def test_tout_occupe_garde_la_place_habituelle(self):
+        """Aucune place libre : on affiche quand même, plutôt que de disparaître."""
+        at, _, _ = self.pick(PLEINE, occupes=["above", "tl", "tr", "bl", "br"])
+        self.assertEqual(at["corner"], "above")
 
-    def test_coin_precedent_essaye_en_premier(self):
-        """Un coin qui marchait est réessayé d'abord : la pastille ne saute pas d'un bord à l'autre."""
+    def test_place_precedente_essayee_en_premier(self):
+        """Une place qui marchait est réessayée d'abord : la pastille ne saute pas d'un bord à l'autre."""
         at, _, _ = self.pick(PLEINE, first='"br"')
         self.assertEqual(at["corner"], "br")
         at, _, _ = self.pick(PLEINE, occupes=["br"], first='"br"')
-        self.assertEqual(at["corner"], "tl")
+        self.assertEqual(at["corner"], "above")
+
+    def test_garde_affichee_entre_la_video_et_la_pastille(self):
+        """Aller cliquer la pastille sort du rectangle de la vidéo : elle ne doit pas s'effacer."""
+        got, _, _ = self.run_js("""
+          const at = anchor(%s, %s, "above");
+          console.log(JSON.stringify({
+            dessus: near(at, at.cx, at.cy),
+            juste_a_cote: near(at, at.cx + 30, at.cy + 20),
+            loin: near(at, at.cx + 300, at.cy),
+          }));
+        """ % (json.dumps(PLEINE), json.dumps(VIEW)))
+        self.assertEqual(got, {"dessus": True, "juste_a_cote": True, "loin": False})
 
     def test_toujours_dans_la_video_visible(self):
         for name, (rect, visible) in PLACEMENTS.items():
@@ -154,6 +178,11 @@ class RefreshReplyTest(unittest.TestCase):
 
 class BridgeWiringTest(unittest.TestCase):
     """Le pont doit être ouvert au démarrage de l'extension et rouvert s'il tombe."""
+
+    def test_maintien_hors_de_la_video(self):
+        """La pastille étant hors de la vidéo, le trajet du curseur ne doit pas l'effacer."""
+        src = open(os.path.join(ROOT, "extension", "content.js")).read()
+        self.assertIn("near(placed, e.clientX, e.clientY)", src)
 
     def test_port_persistant(self):
         src = open(os.path.join(ROOT, "extension", "background.js")).read()

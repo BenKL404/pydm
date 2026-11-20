@@ -5,7 +5,7 @@
   const api = globalThis.browser ?? chrome;
   let enabled = true;
   let host, button, label, current, hideTimer, resetTimer, lastScan = 0, hovered = false, queued = false;
-  let found = [], scanned = 0, taken = null;
+  let found = [], scanned = 0, taken = null, placed = null;
 
   api.storage.local.get("videoButton").then((s) => { enabled = s.videoButton !== false; });
   api.storage.onChanged.addListener((c) => {
@@ -18,10 +18,11 @@
   const INSET = 10;
   const SCAN_MS = 1000;   // fréquence de recherche des vidéos (le survol, lui, est à 150 ms)
   const BUDGET = 20000;   // éléments inspectés au plus : une page énorme ne doit pas ramer
-  // Le haut-gauche d'abord : les commandes des lecteurs et les boutons de Firefox (image dans
-  // l'image) vivent à droite, et rien ne peut passer devant eux — ils sont dessinés par le
-  // navigateur, hors de portée d'un z-index.
-  const CORNERS = ["tl", "tr", "bl", "br"];
+  // Juste au-dessus de la vidéo d'abord, comme le panneau d'IDM : les commandes des lecteurs et
+  // le bouton « image dans l'image » de Firefox vivent *dans* la vidéo, et celui de Firefox est
+  // dessiné par le navigateur — aucun z-index ne passe devant. Hors de la vidéo, personne ne
+  // nous recouvre. Les coins intérieurs ne servent que faute de place au-dessus.
+  const CORNERS = ["above", "tl", "tr", "bl", "br"];
 
   // Position du conteneur et centre de la pastille pour un coin de la partie *visible* de la
   // vidéo. Se contenter du rectangle de la vidéo la rendait inatteignable : hors de l'écran sur
@@ -31,6 +32,11 @@
     const left = Math.max(rect.left, 0), right = Math.min(rect.right, view.width);
     const top = Math.max(rect.top, 0), bottom = Math.min(rect.bottom, view.height);
     if (right - left < size + 2 * inset || bottom - top < size + 2 * inset) return null;
+    if (corner === "above") {
+      const by = top - inset - size;
+      if (by < 0) return null;              // vidéo collée au haut de la fenêtre : pas de place
+      return { corner, align: "flex-start", left, top: by, cx: left + size / 2, cy: by + size / 2 };
+    }
     const toLeft = corner[1] === "l", toTop = corner[0] === "t";
     const bx = toLeft ? left + inset : right - inset - size;    // bord gauche de la pastille
     const by = toTop ? top + inset : bottom - inset - size;
@@ -50,11 +56,18 @@
     let fallback = null;
     for (const corner of order) {
       const spot = anchor(rect, view, corner);
-      if (!spot) return null;
-      if (!fallback && corner === CORNERS[0]) fallback = spot;
+      if (!spot) continue;                  // place impossible ici (pas de place au-dessus…)
+      fallback = fallback || spot;
       if (free(spot)) return spot;
     }
-    return fallback || anchor(rect, view, CORNERS[0]);          // tous pris : on affiche quand même
+    return fallback;                        // toutes prises : on affiche quand même, ou rien
+  }
+
+  // Le trajet de la vidéo vers la pastille sort du rectangle de la vidéo : tant que le curseur
+  // est sur la pastille ou juste à côté, elle ne doit pas s'effacer sous le doigt.
+  function near(spot, x, y, size = SIZE, margin = 28) {
+    if (!spot) return false;
+    return Math.abs(x - spot.cx) <= size / 2 + margin && Math.abs(y - spot.cy) <= size / 2 + margin;
   }
 
   // Certains lecteurs encapsulent leur <video> dans un shadow root ouvert, que
@@ -123,6 +136,7 @@
   }
 
   function apply(spot) {
+    placed = spot;
     host.style.justifyContent = spot.align;
     host.style.left = `${spot.left}px`;
     host.style.top = `${spot.top}px`;
@@ -169,7 +183,7 @@
   function hide() {
     if (host) host.style.display = "none";
     hovered = false;
-    current = null;
+    current = placed = null;
   }
 
   function videos() {
@@ -196,7 +210,9 @@
     if (v) {
       clearTimeout(hideTimer);
       place(v);
-    } else if (current && !hovered) {
+    } else if (current && (hovered || near(placed, e.clientX, e.clientY))) {
+      clearTimeout(hideTimer);      // sur la pastille, ou en route vers elle hors de la vidéo
+    } else if (current) {
       clearTimeout(hideTimer);
       hideTimer = setTimeout(hide, 1500);
     }

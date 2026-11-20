@@ -14,8 +14,10 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Browser extension: the download badge was unreachable on players whose own
   controls — or Firefox's picture-in-picture button — sit in the same corner.
   Those are painted by the browser itself, above any z-index, so the badge now
-  starts in the free top-left corner and moves to another corner when something
-  covers it, checked by hit test rather than guessed.
+  sits just above the video, outside it, the way IDM's panel does. When there
+  is no room above, it falls back inside the video and picks a corner nothing
+  covers, checked by hit test rather than guessed. It also stays visible while
+  the pointer travels from the video to it.
 
 ## [1.7.0] - 2026-11-20
 
