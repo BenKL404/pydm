@@ -4,8 +4,8 @@ import time
 import unittest
 from unittest import mock
 
-from pydm import fingerprint
-from pydm.engine import Download, probe
+from pydm import fingerprint, netpolicy
+from pydm.engine import Download, collapse_holes, probe
 from tests.httpserver import serve
 
 
@@ -261,3 +261,97 @@ class UserAgentTest(unittest.TestCase):
             wait(d)
         self.assertEqual(d.status, "Terminé", d.status)
         self.assertEqual({h["User-Agent"] for h in self.seen}, {"NavigateurTest/9"})
+
+
+class CollapseHolesTest(unittest.TestCase):
+    """Repli mono-connexion : un segment par trou réel, aucun octet déjà écrit redemandé."""
+
+    @staticmethod
+    def holes(segs):
+        return [[s[0] + s[2], s[1]] for s in segs if s[1] - (s[0] + s[2]) + 1 > 0]
+
+    def test_deux_trous_non_contigus(self):
+        segs = [[0, 99, 50], [100, 199, 100], [200, 299, 30], [300, 399, 100]]
+        out = collapse_holes(segs)
+        self.assertEqual(self.holes(out), [[50, 99], [230, 299]])
+        self.assertEqual(sum(s[2] for s in out), 280)       # aucun octet écrit n'est oublié
+        written = [[s[0], s[0] + s[2] - 1] for s in out if s[2]]
+        self.assertEqual(written, [[0, 49], [100, 199], [200, 229], [300, 399]])
+        self.assertEqual(sorted(written + self.holes(out)),
+                         [[0, 49], [50, 99], [100, 199], [200, 229], [230, 299], [300, 399]])
+
+    def test_trous_contigus_fusionnes(self):
+        segs = [[0, 99, 100], [100, 199, 40], [200, 299, 0], [300, 399, 0]]
+        out = collapse_holes(segs)
+        self.assertEqual(self.holes(out), [[140, 399]])
+        self.assertEqual(sum(s[2] for s in out), 140)
+
+    def test_segments_en_cours_tronques_sur_place(self):
+        """Les connexions encore vivantes doivent finir d'elles-mêmes, sans perdre leur avance."""
+        segs = [[0, 99, 50], [100, 199, 0]]
+        encours = segs[0]
+        out = collapse_holes(segs)
+        self.assertIs(out[0], encours)                      # même objet : le worker le voit terminé
+        self.assertEqual(encours, [0, 49, 50])
+        self.assertEqual(encours[1] - (encours[0] + encours[2]) + 1, 0)
+
+    def test_rien_a_faire(self):
+        segs = [[0, 99, 100], [100, 199, 100]]
+        self.assertEqual(collapse_holes([list(s) for s in segs]), segs)
+        self.assertEqual(collapse_holes([[0, -1, 0]]), [[0, -1, 0]])     # taille inconnue : inchangé
+
+
+class ServeurRestrictifTest(unittest.TestCase):
+    """Refus du parallélisme et du rythme : repli automatique, fichier intact."""
+
+    def setUp(self):
+        netpolicy.reset()
+        fingerprint.reset()
+        self.addCleanup(netpolicy.reset)
+        self.addCleanup(fingerprint.reset)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = tmp.name
+        self.data = os.urandom(8 * 1024 * 1024)       # 4 segments
+        penalty = mock.patch("pydm.netpolicy.BASE_PENALTY", 0.05)
+        penalty.start()
+        self.addCleanup(penalty.stop)
+
+    def read(self, d):
+        with open(d.path, "rb") as f:
+            return f.read()
+
+    def test_repli_en_connexion_unique(self):
+        url, stop = serve(self.data, max_concurrent=1, delay=0.002)
+        self.addCleanup(stop)
+        d = Download(url + "/fichier.bin", self.dir, parts=4)
+        d.start()
+        wait(d, 120)
+        self.assertEqual(d.status, "Terminé", d.error or d.status)
+        self.assertEqual(self.read(d), self.data)
+        self.assertTrue(d._mono, "le repli mono-connexion n'a pas été déclenché")
+        self.assertEqual(sum(s[2] for s in d.segments), len(self.data))   # aucun octet en double
+
+    def test_429_avec_retry_after(self):
+        url, stop = serve(self.data, throttle_first=2, retry_after=1)
+        self.addCleanup(stop)
+        d = Download(url + "/fichier.bin", self.dir, parts=4)
+        started = time.time()
+        d.start()
+        wait(d, 120)
+        self.assertEqual(d.status, "Terminé", d.error or d.status)
+        self.assertEqual(self.read(d), self.data)
+        self.assertGreaterEqual(time.time() - started, 1.0)     # Retry-After respecté
+        self.assertEqual(netpolicy.policy_for(url).host, "127.0.0.1")
+
+    def test_refus_definitif_sans_relance(self):
+        url, stop = serve(self.data, throttle_first=0)
+        self.addCleanup(stop)
+        seen = []
+        url2, stop2 = serve(b"", seen=seen, throttle_first=99, retry_after=None)
+        self.addCleanup(stop2)
+        d = Download(url2 + "/fichier.bin", self.dir, parts=2)
+        d.start()
+        wait(d, 60)
+        self.assertTrue(d.error, d.status)
+        self.assertLessEqual(len(seen), 3)              # trois analyses au plus, pas d'acharnement

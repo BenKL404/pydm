@@ -4,6 +4,7 @@
 import glob
 import json
 import os
+import random
 import re
 import shutil
 import tempfile
@@ -16,6 +17,7 @@ from email.message import Message
 
 from .filetypes import category
 from .fingerprint import default_ua, pinned_ua
+from .netpolicy import classify, policy_for
 from .scheduler import LIMITER, RateLimiter
 from .util import safe_filename, unique_path
 
@@ -63,6 +65,34 @@ def probe(url, headers=None):
         name = os.path.basename(urllib.parse.unquote(urllib.parse.urlparse(final).path))
     name = safe_filename(name)
     return size, ranges, name
+
+
+def collapse_holes(segments):
+    """Repli mono-connexion : conserve les octets écrits et isole les trous restants.
+
+    Les segments incomplets sont tronqués **sur place** à leur préfixe déjà écrit — la connexion
+    qui les tient voit son travail terminé et s'arrête d'elle-même — et les trous, fusionnés quand
+    ils se touchent, deviennent de nouveaux segments vides. Aucun octet déjà sur le disque n'est
+    redemandé, et la somme des octets reçus est inchangée.
+    """
+    if any(s[1] < 0 for s in segments):         # taille inconnue : rien à redécouper
+        return list(segments)
+    kept, holes = [], []
+    for s in segments:
+        if s[1] - (s[0] + s[2]) + 1 > 0:
+            holes.append([s[0] + s[2], s[1]])
+            if s[2]:
+                s[1] = s[0] + s[2] - 1
+                kept.append(s)
+        else:
+            kept.append(s)
+    merged = []
+    for start, end in sorted(holes):
+        if merged and start <= merged[-1][1] + 1:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return kept + [[a, b, 0] for a, b in merged]
 
 
 class _Task:
@@ -125,6 +155,7 @@ class Download(_Task):
         self.added = time.time()
         self.want = "now"      # now, later, force, stop (voir scheduler)
         self.lock = threading.Lock()
+        self._mono = False          # repli mono-connexion (serveur refusant le parallélisme)
         self.limiter = RateLimiter()
         self.stop_evt = threading.Event()
         self._thread = None
@@ -222,8 +253,22 @@ class Download(_Task):
     def _remaining(seg):
         return seg[1] - (seg[0] + seg[2]) + 1
 
+    def _collapse_segments(self):
+        with self.lock:
+            self.segments = collapse_holes(self.segments)
+
+    def _next_hole(self):
+        with self.lock:
+            return next((s for s in self.segments if s[1] >= 0 and self._remaining(s) > 0), None)
+
+    def _pending(self):
+        """Travail restant à relancer, une connexion à la fois, après un repli."""
+        return (self._mono and self.ranges and not self.stop_evt.is_set()
+                and self._next_hole() is not None)
+
     def _worker(self, seg):
         tries = 0
+        policy = policy_for(self.url, self.parts)
         while not self.stop_evt.is_set():
             if seg[1] >= 0 and self._remaining(seg) <= 0:
                 return
@@ -233,6 +278,9 @@ class Download(_Task):
                        **self.headers}
             if self.ranges:
                 headers["Range"] = f"bytes={seg[0] + seg[2]}-{seg[1]}"
+            if not policy.acquire(self.stop_evt):
+                return
+            read, rejected = 0, False
             try:
                 req = urllib.request.Request(self.url, headers=headers)
                 with urllib.request.urlopen(req, timeout=30) as r, open(self.part_path, "r+b") as f:
@@ -251,6 +299,7 @@ class Download(_Task):
                         if buf:
                             f.seek(pos)
                             f.write(buf)
+                            read += len(buf)
                         tries = 0
                         if seg[1] >= 0 and self._remaining(seg) <= 0:
                             return
@@ -261,17 +310,56 @@ class Download(_Task):
                 if seg[1] >= 0 and self._remaining(seg) > 0 and not self.stop_evt.is_set():
                     raise IOError("connexion fermée prématurément")
             except Exception as e:  # noqa: BLE001 - toute erreur réseau déclenche une relance
+                rejected = True
+                fatal, throttle, retry_after = classify(e)
+                if fatal:
+                    self._fail(e)
+                    return
+                if throttle:
+                    allowed, delay = policy.on_reject(getattr(e, "code", 0), retry_after)
+                    if allowed <= 1 and self.ranges and not self._mono:
+                        self._mono = True       # une seule connexion, segments recousus
+                        self.status = "Téléchargement (connexion unique)"
+                        self._collapse_segments()
+                    if policy.floor_hit and read == 0:
+                        # refusé seul et sans un octet reçu : le parallélisme n'est pas la cause
+                        tries += 1
+                        if tries > MAX_RETRIES:
+                            self._fail(e)
+                            return
+                    self.stop_evt.wait(delay)   # un refus de rythme ne consomme pas d'essai
+                    continue
                 tries += 1
                 if tries > MAX_RETRIES:
-                    self.error = str(e)
-                    self.stop_evt.set()
+                    self._fail(e)
                     return
-                self.stop_evt.wait(min(2 ** tries, 30))
+                self.stop_evt.wait(min(2 ** tries, 30) * (0.75 + random.random() * 0.5))
+            finally:
+                if not rejected:
+                    policy.on_success(read)
+                policy.release()
+
+    def _fail(self, exc):
+        self.error = friendly_error(str(exc))
+        self.stop_evt.set()
+
+    def _probe(self):
+        """Analyse initiale : un 403/429 ici est réessayé, le reste est remonté tel quel."""
+        policy = policy_for(self.url, self.parts)
+        for attempt in range(3):
+            try:
+                return probe(self.url, self.headers)
+            except Exception as e:  # noqa: BLE001
+                _, throttle, retry_after = classify(e)
+                if not throttle or attempt == 2 or self.stop_evt.is_set():
+                    raise
+                _, delay = policy.on_reject(getattr(e, "code", 0), retry_after)
+                self.stop_evt.wait(delay)
 
     def _run(self):
         try:
             self.status = "Connexion…"
-            size, ranges, name = probe(self.url, self.headers)
+            size, ranges, name = self._probe()
             self._prepare(size, ranges, self.name_hint or name)
         except Exception as e:  # noqa: BLE001
             self.error = friendly_error(str(e))
@@ -279,6 +367,7 @@ class Download(_Task):
             return
 
         self.status = "Téléchargement"
+        self._mono = False
         threads = []
 
         def launch(seg):
@@ -291,16 +380,22 @@ class Download(_Task):
                 launch(seg)
 
         last_done, last_t, last_save = self.done, time.time(), time.time()
-        while any(t.is_alive() for t in threads):
+        while any(t.is_alive() for t in threads) or self._pending():
             time.sleep(0.5)
             now = time.time()
             inst = (self.done - last_done) / max(now - last_t, 1e-6)
             self.speed = inst if self.speed == 0 else 0.7 * self.speed + 0.3 * inst
             last_done, last_t = self.done, now
 
-            # découpage dynamique : une connexion libre prend la moitié du plus gros reste
             alive = sum(t.is_alive() for t in threads)
-            if self.ranges and not self.stop_evt.is_set() and alive < self.parts:
+            if self._mono:
+                # repli : les trous restants sont repris un par un, jamais en parallèle
+                if alive == 0 and not self.stop_evt.is_set():
+                    nxt = self._next_hole()
+                    if nxt is not None:
+                        launch(nxt)
+            # découpage dynamique : une connexion libre prend la moitié du plus gros reste
+            elif self.ranges and not self.stop_evt.is_set() and alive < self.parts:
                 new = None
                 with self.lock:
                     big = max(self.segments, key=self._remaining)
