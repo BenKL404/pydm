@@ -54,6 +54,28 @@ def _check_encoding(response):
             f"correspondent plus aux octets reçus")
 
 
+# noms que servent les lecteurs à la place d'un vrai titre (master.mp4, index.m3u8…)
+GENERIC_NAMES = frozenset("""master index playlist manifest chunklist video movie output stream
+file media hls dash init segment play watch download content main default prog_index source out
+""".split())
+
+
+def better_name(name, title):
+    """Remplace un nom de fichier qui ne dit rien par le titre de la page, extension conservée."""
+    if not (title or "").strip():
+        return name
+    head, dot, tail = (name or "").rpartition(".")      # « .mp4 » n'a pas de nom, juste un suffixe
+    stem, ext = (head, dot + tail) if dot else (tail, "")
+    core = re.sub(r"[\s_.\-]*\(?\d*\)?$", "", stem).strip().lower()
+    if core and core not in GENERIC_NAMES:
+        return name
+    cut = title.strip().encode()[:150].decode(errors="ignore")
+    clean = safe_filename(cut, fallback="")
+    if not clean.strip("_ .-"):             # un titre qui ne donne que des séparateurs ne vaut rien
+        return name
+    return clean + ext
+
+
 def probe(url, headers=None):
     """Retourne (taille, accepte_les_plages, nom_de_fichier)."""
     headers = dict(headers or {})
@@ -154,9 +176,11 @@ class _Task:
 
 
 class Download(_Task):
-    def __init__(self, url, folder, parts=8, name=None, headers=None, name_hint=None, route=None):
+    def __init__(self, url, folder, parts=8, name=None, headers=None, name_hint=None, route=None,
+                 title=None):
         self.url = url
         self.folder = folder
+        self.title = title      # titre de la page : sert si le lien ne donne qu'un « master.mp4 »
         self.route = route      # catégorie → dossier, appliqué quand le nom est connu (nouveau téléchargement)
         self.headers = dict(headers or {})      # Cookie / Referer transmis par le navigateur
         self.name_hint = safe_filename(os.path.basename(name_hint), fallback="") or None if name_hint else None
@@ -410,7 +434,7 @@ class Download(_Task):
         try:
             self.status = "Connexion…"
             size, ranges, name = self._probe()
-            self._prepare(size, ranges, self.name_hint or name)
+            self._prepare(size, ranges, self.name_hint or better_name(name, self.title))
         except Exception as e:  # noqa: BLE001
             self.error = friendly_error(str(e), url=self.url)
             self.status = f"Erreur : {self.error}"
@@ -735,14 +759,15 @@ def looks_like_video(url, headers=None):
 
 
 def make_download(url, folder, parts=8, quality="Meilleure", browser="Aucun",
-                  headers=None, filename=None, kind="auto", fmt=None, stem=None, route=None):
+                  headers=None, filename=None, kind="auto", fmt=None, stem=None, route=None,
+                  title=None):
     """kind : "auto" (détection), "video" (yt-dlp) ou "file" (fichier direct)."""
     if (kind == "video" and have_ytdlp()) or (kind == "auto" and looks_like_video(url, headers)):
         if route:
             folder = route("music" if quality == "Audio MP3" else "video")
         return VideoDownload(url, folder, parts, quality=quality, browser=browser, headers=headers,
                              fmt=fmt, stem=stem)
-    return Download(url, folder, parts, headers=headers, name_hint=filename, route=route)
+    return Download(url, folder, parts, headers=headers, name_hint=filename, route=route, title=title)
 
 
 def entry_from_task(t):

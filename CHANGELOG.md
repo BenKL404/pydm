@@ -7,6 +7,19 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The download badge no longer collapses into a small circle: it always shows
+  "Télécharger avec PyDM" in full, and stays inside the window when the video
+  sits against the right edge.
+
+### Fixed
+
+- Video names: players that serve `master.mp4`, `index.m3u8` or `playlist.mp4`
+  produced downloads named after the stream instead of the video. The page
+  title is now used whenever the link carries no meaningful name, both in the
+  add dialog and for downloads added without confirmation.
+
 ## [1.7.1] - 2026-11-20
 
 ### Fixed

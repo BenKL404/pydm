@@ -5,7 +5,7 @@ import unittest
 from unittest import mock
 
 from pydm import fingerprint, netpolicy
-from pydm.engine import Download, collapse_holes, probe
+from pydm.engine import Download, better_name, collapse_holes, probe
 from tests.httpserver import serve
 
 
@@ -437,3 +437,60 @@ class RafraichissementTest(unittest.TestCase):
         self.assertTrue(d.error, d.status)
         self.assertEqual(d.headers["Cookie"], "SID=1")
         self.assertEqual(request.call_count, 1)
+
+
+class NomLisibleTest(unittest.TestCase):
+    """Beaucoup de lecteurs servent master.mp4 ou index.m3u8 : le titre de la page vaut mieux."""
+
+    def test_nom_generique_remplace(self):
+        for nom in ("master.mp4", "index.mp4", "playlist.mp4", "video.mp4", "manifest.mp4",
+                    "master_2.mp4", "master (1).mp4", "chunklist-1.mp4", ".mp4"):
+            with self.subTest(nom):
+                self.assertEqual(better_name(nom, "Le Seigneur des anneaux"),
+                                 "Le Seigneur des anneaux.mp4")
+
+    def test_nom_parlant_conserve(self):
+        for nom in ("rapport-annuel.pdf", "master-class-2026.mp4", "videotheque.zip", "index-des-prix.csv"):
+            with self.subTest(nom):
+                self.assertEqual(better_name(nom, "Un titre de page"), nom)
+
+    def test_sans_titre_rien_ne_change(self):
+        self.assertEqual(better_name("master.mp4", None), "master.mp4")
+        self.assertEqual(better_name("master.mp4", "   "), "master.mp4")
+
+    def test_titre_nettoye(self):
+        self.assertEqual(better_name("master.mp4", "Saison 1 / Épisode 3 : « début »"),
+                         "Saison 1 _ Épisode 3 _ « début ».mp4" if os.name == "nt"
+                         else "Saison 1 _ Épisode 3 : « début ».mp4")
+
+    def test_titre_long_tronque(self):
+        got = better_name("master.mp4", "é" * 200)
+        self.assertLessEqual(len(os.path.splitext(got)[0].encode()), 150)
+        self.assertTrue(got.endswith(".mp4"))
+
+    def test_titre_inutilisable_garde_le_nom(self):
+        self.assertEqual(better_name("master.mp4", "///"), "master.mp4")
+
+    def test_sans_extension(self):
+        self.assertEqual(better_name("master", "Mon film"), "Mon film")
+
+    def test_telechargement_prend_le_titre(self):
+        data = os.urandom(300_000)
+        url, stop = serve(data)
+        self.addCleanup(stop)
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Download(url + "/hls/master.mp4", tmp, parts=2, title="Le Seigneur des anneaux")
+            d.start()
+            wait(d, 60)
+            self.assertEqual(d.status, "Terminé", d.error or d.status)
+            self.assertEqual(os.path.basename(d.path), "Le Seigneur des anneaux.mp4")
+
+    def test_nom_impose_par_le_navigateur_prioritaire(self):
+        url, stop = serve(os.urandom(1000))
+        self.addCleanup(stop)
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Download(url + "/master.mp4", tmp, parts=1, title="Titre de page",
+                         name_hint="choisi.mp4")
+            d.start()
+            wait(d, 60)
+            self.assertEqual(os.path.basename(d.path), "choisi.mp4")

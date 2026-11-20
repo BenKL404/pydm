@@ -36,9 +36,11 @@ class Factory:
         self.calls = []
 
     def __call__(self, url, folder, parts=8, quality="Meilleure", browser="Aucun",
-                 headers=None, filename=None, kind="auto", fmt=None, stem=None, route=None):
+                 headers=None, filename=None, kind="auto", fmt=None, stem=None, route=None,
+                 title=None):
         self.calls.append({"url": url, "kind": kind, "quality": quality, "folder": folder, "parts": parts,
-                           "fmt": fmt, "stem": stem, "filename": filename, "route": route})
+                           "fmt": fmt, "stem": stem, "filename": filename, "route": route,
+                           "title": title})
         return FakeDownload(url, folder, parts)
 
 
@@ -94,6 +96,15 @@ class WindowTest(WindowCase):
         self.assertTrue(self.tick_until(w, lambda: isinstance(w.model.task(0), FakeDownload)))
         self.assertEqual(self.factory.calls[0]["kind"], "file")
         self.assertEqual(w.model.rowCount(), 1)
+
+    def test_titre_de_page_transmis(self):
+        """Le titre sert à nommer un lien qui ne donne que « master.mp4 »."""
+        w = self.window()
+        self.assertEqual(w.handle_message({"action": "add", "url": "https://a.fr/hls/master.mp4",
+                                           "kind": "file", "title": "Le Seigneur des anneaux"}),
+                         {"ok": True})
+        self.assertTrue(self.tick_until(w, lambda: self.factory.calls))
+        self.assertEqual(self.factory.calls[0]["title"], "Le Seigneur des anneaux")
 
     def test_session_restauree(self):
         entries = [{"url": f"https://a.fr/{n}", "folder": self.cfg, "parts": 4, "name": None, "headers": {}}

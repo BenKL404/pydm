@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog,
 from .. import store
 from ..analyze import THUMB_MAX, analyze
 from ..cache import video_key
-from ..engine import UA
+from ..engine import UA, better_name
 from ..engine import QUALITIES
 from ..filetypes import category
 from ..util import expand_path, human, human_time, safe_filename
@@ -251,7 +251,8 @@ class AddDialog(QDialog):
             return
         self.info_label.setStyleSheet(f"color: {muted};")
         if not self.name_edit.isModified():
-            self.name_edit.setText(r["name"] or "")
+            # « master.mp4 » ne dit rien : le titre de la page est un bien meilleur nom
+            self.name_edit.setText(better_name(r["name"] or "", self.page_title) or "")
         if r["kind"] == "video":
             self.setWindowTitle("Ajouter une vidéo")
             self.title_label.setText(r.get("title") or self.page_title or self.urls[0])

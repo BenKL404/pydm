@@ -35,7 +35,9 @@
     if (corner === "above") {
       const by = top - inset - size;
       if (by < 0) return null;              // vidéo collée au haut de la fenêtre : pas de place
-      return { corner, align: "flex-start", left, top: by, cx: left + size / 2, cy: by + size / 2 };
+      // version longue : on la garde entière dans la fenêtre, quitte à décaler vers la gauche
+      const bx = Math.max(0, Math.min(left, view.width - width));
+      return { corner, align: "flex-start", left: bx, top: by, cx: bx + size / 2, cy: by + size / 2 };
     }
     const toLeft = corner[1] === "l", toTop = corner[0] === "t";
     const bx = toLeft ? left + inset : right - inset - size;    // bord gauche de la pastille
@@ -89,18 +91,15 @@
     // pastille au logo PyDM (anneau des connexions + flèche) qui s'allonge au survol
     root.innerHTML = `
       <style>
-        button { all: unset; pointer-events: auto; box-sizing: border-box; display: flex; align-items: center; gap: 0;
-                 height: 34px; padding: 0 6px; border-radius: 17px; cursor: pointer;
+        button { all: unset; pointer-events: auto; box-sizing: border-box; display: flex; align-items: center; gap: 8px;
+                 height: 34px; padding: 0 14px 0 6px; border-radius: 17px; cursor: pointer;
                  font: 600 13px/1 system-ui, -apple-system, "Segoe UI", sans-serif; color: #f8fafc;
                  background: rgba(15, 23, 42, .82); border: 1px solid rgba(148, 163, 184, .28);
                  -webkit-backdrop-filter: blur(10px) saturate(140%); backdrop-filter: blur(10px) saturate(140%);
                  box-shadow: 0 4px 16px rgba(0, 0, 0, .35);
-                 transition: gap .2s ease, padding .2s ease, background .2s, border-color .2s; }
-        .label { max-width: 0; opacity: 0; overflow: hidden; white-space: nowrap;
-                 transition: max-width .25s ease, opacity .2s ease; }
-        button:hover, button:focus-visible, button.busy, button.ok, button.err { gap: 8px; padding: 0 14px 0 6px; }
-        button:hover .label, button:focus-visible .label, .busy .label, .ok .label, .err .label {
-                 max-width: 220px; opacity: 1; }
+                 transition: background .2s, border-color .2s; }
+        /* libellé toujours lu : la pastille ne se replie plus en pastille ronde */
+        .label { max-width: 220px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
         button:hover { background: rgba(15, 23, 42, .94); border-color: rgba(34, 211, 238, .55); }
         button:focus-visible { outline: 2px solid #22d3ee; outline-offset: 2px; }
         svg { width: 22px; height: 22px; flex: none; }

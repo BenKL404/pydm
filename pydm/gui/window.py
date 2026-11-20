@@ -398,7 +398,8 @@ class MainWindow(QMainWindow):
         opts = {**self.settings, **self.overrides}
         for url in urls:
             self._enqueue(url, expand_path(opts["folder"]), opts["parts"], opts["quality"],
-                          opts["browser"], headers, filename, kind, route=self._route(opts))
+                          opts["browser"], headers, filename, kind, route=self._route(opts),
+                          title=title)
 
     @staticmethod
     def _route(opts, base=None):
@@ -524,7 +525,7 @@ class MainWindow(QMainWindow):
         threading.Thread(target=lambda: self._end_errors.put(run_end_action(action)), daemon=True).start()
 
     def _enqueue(self, url, folder, parts, quality, browser, headers, filename, kind,
-                 fmt=None, stem=None, want="now", route=None):
+                 fmt=None, stem=None, want="now", route=None, title=None):
         placeholder = Download(url, folder, parts)
         placeholder.status = "Analyse…"
         placeholder.want = "stop"       # la file ne démarre pas la ligne provisoire
@@ -534,7 +535,7 @@ class MainWindow(QMainWindow):
         def detect():   # réseau : hors du thread de l'interface
             try:
                 task = self.factory(url, folder, parts, quality, browser, headers, filename, kind,
-                                    fmt=fmt, stem=stem, route=route)
+                                    fmt=fmt, stem=stem, route=route, title=title)
             except Exception as e:  # noqa: BLE001
                 placeholder.error = str(e)
                 placeholder.status = f"Erreur : {e}"

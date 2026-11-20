@@ -122,6 +122,22 @@ class PlacementTest(unittest.TestCase):
         """ % (json.dumps(PLEINE), json.dumps(VIEW)))
         self.assertEqual(got, {"dessus": True, "juste_a_cote": True, "loin": False})
 
+    def test_toujours_en_version_longue(self):
+        """Plus de petit rond : le libellé est lisible sans survol."""
+        src = open(os.path.join(ROOT, "extension", "content.js")).read()
+        self.assertIn('<span class="label">', src)
+        self.assertNotIn("max-width: 0", src)
+        self.assertNotIn("opacity: 0", src)
+
+    def test_pastille_longue_reste_dans_la_fenetre(self):
+        """Vidéo collée au bord droit : la version longue ne doit pas sortir de l'écran."""
+        bord = {"left": 1100, "top": 200, "right": 1270, "bottom": 600}
+        got, width, _ = self.run_js("""
+          console.log(JSON.stringify(anchor(%s, %s, "above")));
+        """ % (json.dumps(bord), json.dumps(VIEW)))
+        self.assertGreaterEqual(got["left"], 0)
+        self.assertLessEqual(got["left"] + width, VIEW["width"])
+
     def test_toujours_dans_la_video_visible(self):
         for name, (rect, visible) in PLACEMENTS.items():
             for corner in ("tl", "tr", "bl", "br"):
