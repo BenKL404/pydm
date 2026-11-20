@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime, time
+from time import time as epoch_now
 
 from pydm.scheduler import Scheduler, parse_hhmm
 
@@ -40,6 +41,21 @@ class SchedulerTest(unittest.TestCase):
         Scheduler(3).tick(tasks, NOW)
         self.assertEqual(sum(t.running for t in tasks), 3)
         self.assertEqual([t.status for t in tasks[3:]], ["En file", "En file"])
+
+    def test_lien_expire_signale_dans_la_file_planifiee(self):
+        """Le lien périmé est signalé, mais la file n'est pas réorganisée pour autant."""
+        t = FakeTask("later")
+        t.url = "https://a.fr/f.bin?Expires=%d&Signature=x" % int(epoch_now() - 60)
+        s = Scheduler(3)
+        s.tick([t], NOW)
+        self.assertEqual(t.status, "En file planifiée — lien expiré")
+        self.assertFalse(t.running)
+        t.url = "https://a.fr/f.bin?Expires=%d&Signature=x" % int(epoch_now() + 3600)
+        s.tick([t], NOW)
+        self.assertEqual(t.status, "En file planifiée")
+        sans_url = FakeTask("later")
+        s.tick([sans_url], NOW)
+        self.assertEqual(sans_url.status, "En file planifiée")
 
     def test_now_avant_later(self):
         tasks = [FakeTask("later"), FakeTask(), FakeTask(), FakeTask()]

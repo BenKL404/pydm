@@ -7,6 +7,7 @@ import urllib.parse
 import urllib.request
 
 from .engine import UA, friendly_error, have_ytdlp, looks_like_video, probe, ytdlp_attempts
+from .signed import expiry_of
 from .util import human, safe_filename
 
 THUMB_MAX = 64 * 1024
@@ -19,7 +20,8 @@ def _clean(msg):
 
 def _result(**kw):
     r = dict(kind="error", name=None, size=None, resumable=False, site=None, title=None, duration=None,
-             thumbnail=None, choices=[], selected=0, ffmpeg_missing=False, error=None, drm=False)
+             thumbnail=None, choices=[], selected=0, ffmpeg_missing=False, error=None, drm=False,
+             expires=None)
     r.update(kw)
     return r
 
@@ -194,6 +196,12 @@ def _video(url, headers, browser, default_quality, ffmpeg):
 
 def analyze(url, headers=None, browser="Aucun", kind="auto", default_quality="Meilleure", ffmpeg=None):
     """Décrit le lien sans le télécharger ; ne lève jamais (kind « error » en cas d'échec)."""
+    result = _analyze(url, headers, browser, kind, default_quality, ffmpeg)
+    result["expires"] = expiry_of(url)      # lien signé : échéance annoncée telle quelle
+    return result
+
+
+def _analyze(url, headers, browser, kind, default_quality, ffmpeg):
     try:
         if ffmpeg is None:
             ffmpeg = bool(shutil.which("ffmpeg"))
@@ -203,5 +211,5 @@ def analyze(url, headers=None, browser="Aucun", kind="auto", default_quality="Me
         return _result(kind="file", name=name, size=size, resumable=ranges,
                        site=urllib.parse.urlparse(url).hostname)
     except Exception as e:  # noqa: BLE001
-        msg = friendly_error(_clean(e) or "analyse impossible")
+        msg = friendly_error(_clean(e) or "analyse impossible", url=url)
         return _result(kind="error", error=msg, drm="DRM" in msg)

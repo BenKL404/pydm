@@ -140,6 +140,16 @@ class AnalyzeTest(unittest.TestCase):
         self.assertEqual((r["kind"], r["name"], r["size"], r["resumable"], r["choices"]),
                          ("file", "a.zip", len(data), True, []))
 
+    def test_analyze_expose_l_echeance(self):
+        import time as _time
+        data = os.urandom(1000)
+        url, stop = serve(data)
+        self.addCleanup(stop)
+        limite = int(_time.time() + 600)
+        r = analyze(url + "/x?Expires=%d&Signature=ab" % limite, kind="file")
+        self.assertEqual((r["kind"], r["expires"]), ("file", float(limite)))
+        self.assertIsNone(analyze(url + "/x", kind="file")["expires"])
+
     def test_analyze_fichier_injoignable(self):
         r = analyze("http://127.0.0.1:9/x", kind="file")
         self.assertEqual(r["kind"], "error")

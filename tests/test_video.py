@@ -224,6 +224,17 @@ class VideoCookiesTest(unittest.TestCase):
         self.assertIn("Accès refusé par le serveur", d.status)
         self.assertIn("Rechargez la page", d.error)
 
+    def test_message_lien_expire(self):
+        from pydm.engine import friendly_error
+        perime = "https://a.fr/f.bin?Expires=%d&Signature=x" % int(time.time() - 60)
+        frais = "https://a.fr/f.bin?Expires=%d&Signature=x" % int(time.time() + 3600)
+        self.assertTrue(friendly_error("HTTP Error 403: Forbidden", url=perime)
+                        .startswith("Ce lien a expiré"))
+        self.assertTrue(friendly_error("HTTP Error 403: Forbidden", url=frais)
+                        .startswith("Accès refusé par le serveur (403)"))
+        self.assertTrue(friendly_error("HTTP Error 403: Forbidden")
+                        .startswith("Accès refusé par le serveur (403)"))
+
     def test_message_ordinaire_inchange(self):
         from pydm.engine import friendly_error
         self.assertEqual(friendly_error("HTTP Error 404: Not Found"), "HTTP Error 404: Not Found")

@@ -19,6 +19,7 @@ from .filetypes import category
 from .fingerprint import default_ua, pinned_ua
 from .netpolicy import classify, policy_for
 from .scheduler import LIMITER, RateLimiter
+from .signed import freshness
 from .util import safe_filename, unique_path
 
 CHUNK = 64 * 1024
@@ -360,7 +361,7 @@ class Download(_Task):
                 policy.release()
 
     def _fail(self, exc):
-        self.error = friendly_error(str(exc))
+        self.error = friendly_error(str(exc), url=self.url)
         self.stop_evt.set()
 
     def _probe(self):
@@ -382,7 +383,7 @@ class Download(_Task):
             size, ranges, name = self._probe()
             self._prepare(size, ranges, self.name_hint or name)
         except Exception as e:  # noqa: BLE001
-            self.error = friendly_error(str(e))
+            self.error = friendly_error(str(e), url=self.url)
             self.status = f"Erreur : {self.error}"
             return
 
@@ -608,7 +609,7 @@ class VideoDownload(_Task):
         msg = re.sub(r"\x1b\[[0-9;]*m", "", str(first_error)).replace("ERROR: ", "").strip()
         if "DRM" in msg:
             msg = "contenu protégé par DRM, téléchargement impossible"
-        msg = friendly_error(msg)
+        msg = friendly_error(msg, url=self.url)
         self.error = msg
         self.status = f"Erreur : {msg[:150]}"
 
@@ -634,12 +635,15 @@ def ytdlp_attempts(url, headers, browser):
                 pass
 
 
-def friendly_error(msg, windows=(os.name == "nt")):
+def friendly_error(msg, windows=(os.name == "nt"), url=None):
     """Message lisible pour les refus courants (le détail technique reste à la fin)."""
     low = msg.lower()
     if windows and ("dpapi" in low or ("cookie" in low and "decrypt" in low)):
         return ("Chrome chiffre ses cookies sous Windows d'une façon que PyDM ne peut pas lire : choisissez "
                 "Firefox dans « Cookies ». — " + msg)
+    if url and freshness(url)[0] == "expired":
+        return ("Ce lien a expiré : sa date limite est dépassée. Rechargez la page puis renvoyez le "
+                "lien. — " + msg)
     if "HTTP Error 403" in msg:
         return ("Accès refusé par le serveur (403) : le lien est peut-être lié au navigateur ou à son "
                 "adresse IP (VPN ou proxy ?), ou a expiré. Rechargez la page puis renvoyez le lien. — " + msg)

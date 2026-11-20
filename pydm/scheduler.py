@@ -7,6 +7,8 @@ import time
 from datetime import datetime, timedelta
 from datetime import time as dtime
 
+from .signed import freshness
+
 BUCKET_MIN = 64 * 1024
 
 
@@ -84,6 +86,8 @@ class Scheduler:
                 t.status = "En file"
             elif _waiting(t) and t.want == "later":
                 t.status = "En file planifiée" + (f" (reprise à {resume:%H:%M})" if resume else "")
+                if freshness(getattr(t, "url", ""))[0] == "expired":
+                    t.status += " — lien expiré"       # signalé, mais la file n'est pas réorganisée
         pending = any(t.want in ("now", "later") and not t.finished and not t.error for t in tasks)
         forced = any(t.want == "force" and t.running for t in tasks)
         if self.queue_started and not any(t.want == "later" and not t.finished and not t.error for t in tasks):
