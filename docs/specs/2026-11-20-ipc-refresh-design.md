@@ -1,6 +1,7 @@
 # Port natif persistant : rafraîchir un lien ou une session depuis le navigateur
 
-Date : 2026-11-20. Spécification à valider ; rien n'est implémenté.
+Date : 2026-11-20. Implémenté (branche `feat/ipc-refresh`) ; cette page reste la référence
+du protocole.
 
 ## Objectif
 
@@ -34,15 +35,16 @@ Extension → hôte :
 
 ```json
 {"id": "7f3c…", "headers": {"User-Agent": "…", "Referer": "…", "Cookie": "…"}}
-{"id": "7f3c…", "error": "no-tab"}
+{"id": "7f3c…", "error": "unsupported"}
 ```
 
 - `id` : identifiant opaque généré par PyDM, renvoyé tel quel ; toute réponse dont l'`id` est
   inconnu est ignorée.
 - `action` : `refresh` seulement dans cette version. Un `action` inconnu reçoit
   `{"id": …, "error": "unsupported"}`.
-- `error` : `no-tab` (aucun onglet sur cette origine), `denied` (permission refusée),
-  `unsupported`.
+- `error` : `unsupported` (action inconnue), `bad-url` (lien non http(s)), sinon le message de
+  l'erreur rencontrée. Pas de `no-tab` : les cookies viennent du magasin du navigateur, aucun
+  onglet n'est nécessaire.
 - Délai : 5 s côté PyDM, puis échec de la demande (pas de la tâche, qui applique sa règle de
   relance).
 

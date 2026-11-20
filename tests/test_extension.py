@@ -121,6 +121,53 @@ class ShadowDomTest(unittest.TestCase):
 
 
 @unittest.skipUnless(shutil.which("node"), "node absent")
+class RefreshReplyTest(unittest.TestCase):
+    """Réponse de l'extension aux demandes de PyDM (pont natif permanent)."""
+
+    def answers(self, script):
+        src = open(os.path.join(ROOT, "extension", "background.js")).read()
+        code = re.search(r"^async function answerHost\(.*?^\}", src, re.M | re.S).group(0)
+        out = subprocess.run(["node", "--input-type=module", "-e", code + "\n" + script],
+                             capture_output=True, text=True, timeout=30)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return json.loads(out.stdout)
+
+    def test_reponses(self):
+        got = self.answers("""
+          const entetes = async (url, referer) => ({ "User-Agent": "Firefox", Referer: referer,
+                                                     Cookie: "SID=" + url.length });
+          const boum = async () => { throw new Error("cookies refusés"); };
+          const cas = {
+            demande: await answerHost({ id: "a", action: "refresh", url: "https://a.fr/f",
+                                        referer: "https://a.fr/p" }, entetes),
+            inconnue: await answerHost({ id: "b", action: "danse" }, entetes),
+            sans_id: await answerHost({ action: "refresh", url: "https://a.fr/f" }, entetes),
+            pas_un_lien: await answerHost({ id: "d", action: "refresh", url: "javascript:1" }, entetes),
+            en_echec: await answerHost({ id: "e", action: "refresh", url: "https://a.fr/f" }, boum),
+          };
+          console.log(JSON.stringify(cas));
+        """)
+        self.assertEqual(got["demande"], {"id": "a", "headers": {
+            "User-Agent": "Firefox", "Referer": "https://a.fr/p", "Cookie": "SID=14"}})
+        self.assertEqual(got["inconnue"], {"id": "b", "error": "unsupported"})
+        self.assertIsNone(got["sans_id"])
+        self.assertEqual(got["pas_un_lien"], {"id": "d", "error": "bad-url"})
+        self.assertEqual(got["en_echec"], {"id": "e", "error": "cookies refusés"})
+
+
+class BridgeWiringTest(unittest.TestCase):
+    """Le pont doit être ouvert au démarrage de l'extension et rouvert s'il tombe."""
+
+    def test_port_persistant(self):
+        src = open(os.path.join(ROOT, "extension", "background.js")).read()
+        self.assertIn("connectNative(HOST)", src)
+        self.assertIn('postMessage({ action: "bridge" })', src)
+        self.assertIn("onDisconnect.addListener", src)
+        # ouvert à chaque réveil du service worker, pas seulement à l'installation
+        self.assertRegex(src, re.compile(r"^connectHost\(\);", re.M))
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
 class VideoPageTest(unittest.TestCase):
     def test_pages_video(self):
         src = open(os.path.join(ROOT, "extension", "background.js")).read()

@@ -160,7 +160,48 @@ async function resolveVideo(tabId, pageUrl, src) {
   return { url: pageUrl, kind: "video" };   // yt-dlp tente son extracteur générique
 }
 
-// --- 3. Menu du clic droit -------------------------------------------------
+// --- 3. Pont permanent : PyDM demande des en-têtes à jour ------------------
+// PyDM ne peut pas renouveler seul une session : les cookies capturés à l'ajout d'un
+// téléchargement peuvent avoir tourné quand la file le démarre, des heures plus tard.
+let port = null;
+let reconnect = null;
+
+async function answerHost(msg, headers = headersFor) {
+  if (!msg || typeof msg.id !== "string") return null;        // pas une demande : rien à renvoyer
+  if (msg.action !== "refresh") return { id: msg.id, error: "unsupported" };
+  if (!/^https?:/.test(msg.url || "")) return { id: msg.id, error: "bad-url" };
+  try {
+    return { id: msg.id, headers: await headers(msg.url, msg.referer) };
+  } catch (e) {
+    return { id: msg.id, error: String(e?.message || e) };
+  }
+}
+
+function connectHost() {
+  if (port) return port;
+  try {
+    port = api.runtime.connectNative(HOST);
+  } catch {
+    port = null;
+    return null;
+  }
+  port.onMessage.addListener(async (msg) => {
+    const reply = await answerHost(msg);
+    try { if (reply && port) port.postMessage(reply); } catch {}
+  });
+  port.onDisconnect.addListener(() => {
+    port = null;
+    // hôte absent, PyDM désinstallé, service worker recyclé : on retente sans s'acharner
+    if (!reconnect) reconnect = setTimeout(() => { reconnect = null; connectHost(); }, 30000);
+  });
+  port.postMessage({ action: "bridge" });
+  return port;
+}
+
+connectHost();
+api.runtime.onStartup?.addListener(connectHost);
+
+// --- 4. Menu du clic droit -------------------------------------------------
 api.runtime.onInstalled.addListener(async () => {
   await api.contextMenus.removeAll();
   api.contextMenus.create({ id: "pydm-link", title: "Télécharger avec PyDM", contexts: ["link"] });
@@ -185,7 +226,7 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 });
 
-// --- 4. Messages du bouton flottant et de la fenêtre de l'extension -------
+// --- 5. Messages du bouton flottant et de la fenêtre de l'extension -------
 api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     try {
