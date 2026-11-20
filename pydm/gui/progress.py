@@ -78,6 +78,7 @@ class ProgressDialog(QDialog):
         self.limit_spin.setRange(*LIMIT_RANGE)
         self.limit_spin.setSingleStep(64)
         self.limit_spin.setSuffix(" Ko/s")
+        self.limit_spin.setKeyboardTracking(False)     # appliquer la valeur tapée, pas chaque chiffre
         self.limit_spin.setValue(task.limit_kbps or 1024)
         self.limit_box.setChecked(bool(task.limit_kbps))
         self.limit_box.toggled.connect(self._apply_limit)

@@ -161,7 +161,8 @@ class MainWindow(QMainWindow):
         self.link.returnPressed.connect(self.download_link)
         self._link_len = 0                  # longueur avant la dernière modification
         self.link.textEdited.connect(self._link_edited)                             # émis avant textChanged
-        self.link.textChanged.connect(lambda text: setattr(self, "_link_len", len(text)))
+        # longueur réelle du champ : un textChanged « externe » peut arriver après le vidage fait au collage
+        self.link.textChanged.connect(lambda *_: setattr(self, "_link_len", len(self.link.text())))
         h.addWidget(self.link, 1)
         self.quality = QComboBox()
         self.quality.addItems(list(QUALITIES))
@@ -638,6 +639,7 @@ class MainWindow(QMainWindow):
                 self.model.replace(placeholder, task)
                 # la file la démarre (ou l'attend) ; une pause demandée pendant l'analyse est gardée
                 task.want = "stop" if getattr(placeholder, "user_stop", False) else want
+                task.limit_kbps = placeholder.limit_kbps        # limite posée pendant l'analyse
                 if self.settings["show_progress"]:
                     self._auto_progress.add(task)
                 self.dirty = True

@@ -60,6 +60,13 @@ class PasteLinksTest(WindowCase):
             self.paste(w, LINKS)
         self.assertEqual(dialog.call_args.args[0], ["https://a.fr/1.zip", "https://a.fr/2.zip", "https://a.fr/3.zip"])
 
+    def test_deux_collages_de_suite(self):
+        w = self.window()
+        self.paste(w, LINKS)
+        self.paste(w, "https://b.fr/1 https://b.fr/2")         # plus court que le premier
+        self.assertEqual(w.link.text(), "")
+        self.assertTrue(self.tick_until(w, lambda: len(self.factory.calls) == 5))
+
     def test_frappe_ne_declenche_rien(self):
         w = self.window()
         w.link.setFocus()

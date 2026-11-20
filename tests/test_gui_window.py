@@ -906,6 +906,14 @@ class TaskLimitMenuTest(WindowCase):
             self.submenu(w, sel)["Autre…"].trigger()
         self.assertEqual(sel[0].limit_kbps, 333)
 
+    def test_limite_sur_ligne_en_analyse(self):
+        w = self.window()
+        w.add_urls(["https://a.fr/gros.iso"])
+        placeholder = w.model.tasks()[0]
+        w.set_tasks_limit([placeholder], 512)                  # posée pendant l'analyse
+        self.assertTrue(self.tick_until(w, lambda: isinstance(w.model.tasks()[0], FakeDownload)))
+        self.assertEqual(w.model.tasks()[0].limit_kbps, 512)
+
     def test_reperage(self):
         from PySide6.QtCore import Qt
         w = self.window()

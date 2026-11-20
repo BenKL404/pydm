@@ -191,6 +191,7 @@ class ProgressLimitTest(ProgressDialogTest):
         self.assertEqual(t.limit_kbps, 400)
         d.limit_box.setChecked(False)
         self.assertEqual(t.limit_kbps, 0)
+        self.assertFalse(d.limit_spin.keyboardTracking())   # « 2048 » ne passe pas par 20 Ko/s
         t.limit_kbps = 700                              # changée ailleurs (menu de la liste)
         d.refresh()
         self.assertTrue(d.limit_box.isChecked())
