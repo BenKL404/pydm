@@ -5,7 +5,7 @@
   const api = globalThis.browser ?? chrome;
   let enabled = true;
   let host, button, label, current, hideTimer, resetTimer, lastScan = 0, hovered = false, queued = false;
-  let found = [], scanned = 0;
+  let found = [], scanned = 0, taken = null;
 
   api.storage.local.get("videoButton").then((s) => { enabled = s.videoButton !== false; });
   api.storage.onChanged.addListener((c) => {
@@ -18,16 +18,43 @@
   const INSET = 10;
   const SCAN_MS = 1000;   // fréquence de recherche des vidéos (le survol, lui, est à 150 ms)
   const BUDGET = 20000;   // éléments inspectés au plus : une page énorme ne doit pas ramer
+  // Le haut-gauche d'abord : les commandes des lecteurs et les boutons de Firefox (image dans
+  // l'image) vivent à droite, et rien ne peut passer devant eux — ils sont dessinés par le
+  // navigateur, hors de portée d'un z-index.
+  const CORNERS = ["tl", "tr", "bl", "br"];
 
-  // Place la pastille dans la partie *visible* de la vidéo. Se contenter du rectangle de la vidéo
-  // la rendait inatteignable : hors de l'écran sur un lecteur qui déborde à droite, et à cheval
-  // sur le bord d'une vidéo étroite, où aller la cliquer fait sortir le curseur de la zone qui
-  // la maintient affichée. Renvoie null quand il ne reste rien de cliquable.
-  function spot(rect, view, width = WIDTH, size = SIZE, inset = INSET) {
+  // Position du conteneur et centre de la pastille pour un coin de la partie *visible* de la
+  // vidéo. Se contenter du rectangle de la vidéo la rendait inatteignable : hors de l'écran sur
+  // un lecteur plus large que la fenêtre, à cheval sur le bord d'une vidéo étroite. null quand
+  // il ne reste rien d'assez grand pour cliquer.
+  function anchor(rect, view, corner, width = WIDTH, size = SIZE, inset = INSET) {
     const left = Math.max(rect.left, 0), right = Math.min(rect.right, view.width);
     const top = Math.max(rect.top, 0), bottom = Math.min(rect.bottom, view.height);
     if (right - left < size + 2 * inset || bottom - top < size + 2 * inset) return null;
-    return { left: right - inset - width, top: Math.min(top + inset, bottom - inset - size) };
+    const toLeft = corner[1] === "l", toTop = corner[0] === "t";
+    const bx = toLeft ? left + inset : right - inset - size;    // bord gauche de la pastille
+    const by = toTop ? top + inset : bottom - inset - size;
+    return {
+      corner,
+      align: toLeft ? "flex-start" : "flex-end",   // le libellé s'allonge vers l'intérieur
+      left: toLeft ? bx : bx + size - width,
+      top: by,
+      cx: bx + size / 2,
+      cy: by + size / 2,
+    };
+  }
+
+  // Premier coin où la pastille est réellement au-dessus de tout : `free` la pose et vérifie.
+  function pickCorner(rect, view, free, first) {
+    const order = first ? [first, ...CORNERS.filter((c) => c !== first)] : CORNERS;
+    let fallback = null;
+    for (const corner of order) {
+      const spot = anchor(rect, view, corner);
+      if (!spot) return null;
+      if (!fallback && corner === CORNERS[0]) fallback = spot;
+      if (free(spot)) return spot;
+    }
+    return fallback || anchor(rect, view, CORNERS[0]);          // tous pris : on affiche quand même
   }
 
   // Certains lecteurs encapsulent leur <video> dans un shadow root ouvert, que
@@ -95,27 +122,36 @@
     label.textContent = text;
   }
 
+  function apply(spot) {
+    host.style.justifyContent = spot.align;
+    host.style.left = `${spot.left}px`;
+    host.style.top = `${spot.top}px`;
+    host.style.display = "flex";
+    // une page qui transforme <html> ou le conteneur plein écran décale « fixed » : on corrige
+    const h = host.getBoundingClientRect();
+    if (Math.abs(h.left - spot.left) > 1 || Math.abs(h.top - spot.top) > 1) {
+      host.style.left = `${2 * spot.left - h.left}px`;
+      host.style.top = `${2 * spot.top - h.top}px`;
+    }
+  }
+
   function place(video) {
     if (!host) build();
     if (hovered && current === video) return;       // ne pas déplacer la pastille sous le curseur
     const view = { width: innerWidth, height: innerHeight };
-    // largeur fixe, pastille calée à droite : elle s'allonge vers la gauche sans changer d'ancrage
-    const at = spot(video.getBoundingClientRect(), view);
+    const parent = document.fullscreenElement || document.documentElement;
+    if (host.parentNode !== parent) parent.appendChild(host);
+    const at = pickCorner(video.getBoundingClientRect(), view, (spot) => {
+      apply(spot);        // posée pour de vrai : seul le test de survol dit qui est devant
+      const front = document.elementFromPoint(spot.cx, spot.cy);
+      return front === host || host.contains(front);
+    }, taken);
     if (!at) {
       hide();
       return;
     }
-    const parent = document.fullscreenElement || document.documentElement;
-    if (host.parentNode !== parent) parent.appendChild(host);
-    host.style.left = `${at.left}px`;
-    host.style.top = `${at.top}px`;
-    host.style.display = "flex";
-    // une page qui transforme <html> ou le conteneur plein écran décale « fixed » : on corrige
-    const h = host.getBoundingClientRect();
-    if (Math.abs(h.left - at.left) > 1 || Math.abs(h.top - at.top) > 1) {
-      host.style.left = `${2 * at.left - h.left}px`;
-      host.style.top = `${2 * at.top - h.top}px`;
-    }
+    apply(at);
+    taken = at.corner;    // réessayé en premier la prochaine fois : pas de saut d'un bord à l'autre
     current = video;
   }
 

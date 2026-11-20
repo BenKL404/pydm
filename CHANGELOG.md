@@ -7,6 +7,14 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Browser extension: the download badge was unreachable on players whose own
+  controls — or Firefox's picture-in-picture button — sit in the same corner.
+  Those are painted by the browser itself, above any z-index, so the badge now
+  starts in the free top-left corner and moves to another corner when something
+  covers it, checked by hit test rather than guessed.
+
 ## [1.7.0] - 2026-11-20
 
 ### Added
