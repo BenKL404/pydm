@@ -7,8 +7,30 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Expiring links: PyDM now reads the deadline a signed link carries (AWS SigV4,
+  CloudFront, Akamai tokens, JWT) and says "Ce lien a expiré, rechargez la page"
+  instead of reporting an opaque 403. A planned download whose link is already
+  dead is flagged in the queue.
+
+### Changed
+
+- Restrictive servers: a 403 or 429 is no longer treated as a network outage.
+  The number of simultaneous connections allowed per host is halved on each
+  refusal (with jitter and `Retry-After` honoured) and grows back as data
+  flows; at one connection the remaining work is stitched back together and
+  resumed one hole at a time, without re-downloading anything already written.
+- The announced User-Agent now matches the platform PyDM runs on and stays
+  pinned per host; the browser's own User-Agent, sent by the extension, still
+  wins.
+
 ### Fixed
 
+- Videos: a fragment the server would not serve was silently skipped, leaving a
+  gap in the file. All fragments are now required.
+- Range requests advertise `Accept-Encoding: identity`, and a compressed partial
+  response stops the download instead of writing bytes at the wrong offsets.
 - Browser extension: the "Télécharger avec PyDM" badge could end up out of
   reach — entirely off-screen on a player wider than the window, or straddling
   the edge of a narrow video, where moving towards it took the pointer out of
