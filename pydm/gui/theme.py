@@ -135,6 +135,8 @@ QToolButton:hover {{ background: {border}; }}
 QToolButton:disabled {{ background: transparent; }}
 QToolButton:checked {{ background: {select}; color: {select_text}; }}
 QToolButton::menu-indicator {{ image: none; width: 0; }}
+QToolButton[popupMode="1"] {{ padding-right: 20px; }}
+QToolButton::menu-button {{ border: none; width: 16px; }}
 QFrame#header {{ border-bottom: 1px solid {border}; }}
 QLineEdit, QComboBox {{ border: 1px solid {border}; border-radius: 6px; padding: 5px 8px;
     background: {base}; }}

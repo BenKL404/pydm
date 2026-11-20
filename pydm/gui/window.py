@@ -39,6 +39,7 @@ from . import theme
 from .adddialog import AddDialog
 from .delegates import ProgressDelegate
 from .links import extract_urls
+from .multilinks import MultiLinksDialog
 from .model import DownloadFilter, DownloadModel, counts
 from .progress import ProgressDialog
 from .schedule import EndActionDialog, ScheduleDialog, run_end_action
@@ -158,6 +159,9 @@ class MainWindow(QMainWindow):
         self.link.setPlaceholderText("Coller un lien ou glisser-déposer…")
         self.link.setClearButtonEnabled(True)
         self.link.returnPressed.connect(self.download_link)
+        self._link_len = 0                  # longueur avant la dernière modification
+        self.link.textEdited.connect(self._link_edited)                             # émis avant textChanged
+        self.link.textChanged.connect(lambda text: setattr(self, "_link_len", len(text)))
         h.addWidget(self.link, 1)
         self.quality = QComboBox()
         self.quality.addItems(list(QUALITIES))
@@ -197,6 +201,7 @@ class MainWindow(QMainWindow):
         h.addWidget(self.btn_search)
         self.btn_menu = self._tool("menu", "Menu", lambda: None)
         self.menu = QMenu(self)
+        self.menu.addAction("Ajouter plusieurs liens…\tCtrl+Maj+V", self.open_multi_links)
         self.menu.addAction("Préférences…\tCtrl+,", self.open_preferences)
         self.menu.addAction("Panneau de détail", self.toggle_detail)
         self.sidebar_action = self.menu.addAction("Barre latérale\tCtrl+B", self.toggle_sidebar)
@@ -248,6 +253,7 @@ class MainWindow(QMainWindow):
 
     def _shortcuts(self):
         for keys, slot in ((QKeySequence.Find, self.toggle_search), ("Ctrl+O", self.open_folder),
+                           ("Ctrl+Shift+V", self.open_multi_links),
                            ("Ctrl+,", self.open_preferences), ("Ctrl+B", self.toggle_sidebar),
                            ("Ctrl+Q", self.quit_app)):
             QShortcut(QKeySequence(keys), self, slot)
@@ -359,6 +365,19 @@ class MainWindow(QMainWindow):
         store.save_session(entries)
 
     # --- ajout ---------------------------------------------------------------
+    def _link_edited(self, text):
+        """Collage (ou dépôt) de plusieurs liens dans le champ : on les ajoute aussitôt. La frappe
+        n'ajoute qu'un caractère à la fois et ne déclenche donc rien."""
+        urls = extract_urls(text) if len(text) - self._link_len > 1 else []
+        if len(urls) >= 2:
+            self.link.clear()
+            self.add_urls(urls)
+
+    def open_multi_links(self):
+        dlg = MultiLinksDialog(self)
+        if dlg.exec() and dlg.urls():
+            self.add_urls(dlg.urls())
+
     def download_link(self):
         urls = extract_urls(self.link.text())
         if not urls:

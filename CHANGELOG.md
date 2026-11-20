@@ -7,6 +7,21 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Per-download speed limit: right-click → "Limiter la vitesse", or the "Limite"
+  row of the progress window; adjustable while downloading, kept in the
+  session, shown with ⏱ in the Speed column and in the detail panel.
+- Global speed limit from the status bar: click to turn it on or off, arrow to
+  pick 256 KB/s to 10 MB/s or another value.
+- Paste several links at once: pasting two or more links in the link field adds
+  them right away; "Ajouter plusieurs liens…" (Ctrl+Shift+V) takes any text.
+
+### Changed
+
+- The status bar now reads "Vitesse illimitée" or "Limité à …" instead of always
+  showing the configured value.
+
 ## [1.5.1] - 2026-11-10
 
 ### Fixed
