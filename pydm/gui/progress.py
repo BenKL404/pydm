@@ -4,12 +4,12 @@
 from PySide6.QtCore import QRectF, QSize, Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QPainter
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QDialog, QFormLayout, QHBoxLayout, QHeaderView,
-                               QLabel, QProgressBar, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout,
-                               QWidget)
+                               QLabel, QProgressBar, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem,
+                               QVBoxLayout, QWidget)
 
 from ..util import human, human_time
 from . import theme
-from .widgets import ElidedLabel, breakable
+from .widgets import LIMIT_RANGE, ElidedLabel, breakable
 
 FIELDS = ("Lien", "Statut", "Taille", "Reçu", "Vitesse", "Temps restant", "Reprise")
 
@@ -70,6 +70,22 @@ class ProgressDialog(QDialog):
             self.values[name] = label
             form.addRow(name, label)
         self.values["Statut"].setWordWrap(True)         # message d'erreur parfois long
+        limit_row = QWidget()               # limite propre à ce téléchargement, comme IDM
+        h = QHBoxLayout(limit_row)
+        h.setContentsMargins(0, 0, 0, 0)
+        self.limit_box = QCheckBox("Limiter ce téléchargement à")
+        self.limit_spin = QSpinBox()
+        self.limit_spin.setRange(*LIMIT_RANGE)
+        self.limit_spin.setSingleStep(64)
+        self.limit_spin.setSuffix(" Ko/s")
+        self.limit_spin.setValue(task.limit_kbps or 1024)
+        self.limit_box.setChecked(bool(task.limit_kbps))
+        self.limit_box.toggled.connect(self._apply_limit)
+        self.limit_spin.valueChanged.connect(self._apply_limit)
+        h.addWidget(self.limit_box)
+        h.addWidget(self.limit_spin)
+        h.addStretch(1)
+        form.addRow("Limite", limit_row)
         lay.addLayout(form)
         self.bar = QProgressBar()
         self.bar.setRange(0, 1000)
@@ -140,8 +156,19 @@ class ProgressDialog(QDialog):
         self.close()
 
     # --- affichage ----------------------------------------------------------------
+    def _apply_limit(self, *_):
+        self.task.limit_kbps = self.limit_spin.value() if self.limit_box.isChecked() else 0
+
     def refresh(self):
         t = self.task
+        if t.limit_kbps != (self.limit_spin.value() if self.limit_box.isChecked() else 0):
+            for w in (self.limit_box, self.limit_spin):      # changée ailleurs : on suit sans la réécrire
+                w.blockSignals(True)
+            self.limit_box.setChecked(bool(t.limit_kbps))
+            if t.limit_kbps:
+                self.limit_spin.setValue(t.limit_kbps)
+            for w in (self.limit_box, self.limit_spin):
+                w.blockSignals(False)
         ratio = t.done / t.size if t.size else None
         pct = f"{100 * ratio:.0f} %" if ratio is not None else ""
         name = t.name or t.url

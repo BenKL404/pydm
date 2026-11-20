@@ -10,19 +10,12 @@ from PySide6.QtGui import QDesktopServices, QGuiApplication, QPainter, QPen, QPo
 from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QToolButton, QVBoxLayout, QWidget
 
 from ..scheduler import LIMIT_PRESETS
-from ..util import human
+from ..util import human, limit_text
 from . import theme
 
 
 ZWSP = "\u200b"
 LIMIT_RANGE = (16, 1_000_000)           # Ko/s, comme store.RANGES["speed_kbps"]
-
-
-def limit_text(kbps):
-    """« 256 Ko/s », « 2 Mo/s », « 1.5 Mo/s »."""
-    if kbps < 1024:
-        return f"{kbps} Ko/s"
-    return f"{kbps / 1024:.1f}".rstrip("0").rstrip(".") + " Mo/s"
 
 
 def ask_limit(parent, current):
@@ -212,6 +205,7 @@ class DetailPanel(QWidget):
             ("Reçu", human(task.done)),
             ("Connexions", f"{task.active_connections} actives / {task.parts} prévues"),
             ("Reprise possible", "—" if task.error else ("oui" if task.resumable else "non")),
+            ("Limite", limit_text(task.limit_kbps) if task.limit_kbps else "sans limite"),
         ]
         if task.error:
             rows.append(("Erreur", f"<span style='color:{theme.STATE_COLORS['error']}'>"

@@ -8,7 +8,7 @@ from PySide6.QtGui import QColor
 
 from ..engine import VideoDownload
 from ..filetypes import CATEGORIES, category
-from ..util import human, human_time
+from ..util import human, human_time, limit_text
 from . import theme
 
 COLUMNS = ("name", "size", "progress", "speed", "eta", "status", "added")
@@ -77,7 +77,7 @@ class DownloadModel(QAbstractTableModel):
 
     @staticmethod
     def _snap(t):
-        return (t.name, t.size, t.done, t.speed, t.status, t.running, t.error)
+        return (t.name, t.size, t.done, t.speed, t.status, t.running, t.error, t.limit_kbps)
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self._tasks)
@@ -172,6 +172,8 @@ class DownloadModel(QAbstractTableModel):
             return theme.type_icon(task_category(t))
         if role == Qt.ToolTipRole and col in (0, 5):
             return t.url if col == 0 else t.status
+        if role == Qt.ToolTipRole and col == 3 and t.limit_kbps:
+            return f"Limité à {limit_text(t.limit_kbps)}"
         if role == Qt.ForegroundRole and col == 5 and t.error:
             return QColor(theme.STATE_COLORS["error"])
         if role == Qt.TextAlignmentRole and col in NUMERIC:
@@ -188,7 +190,8 @@ class DownloadModel(QAbstractTableModel):
             r = _ratio(t)
             return f"{100 * r:.0f} %" if r is not None else human(t.done)
         if col == 3:
-            return f"{human(t.speed)}/s" if t.running else ""
+            speed = f"{human(t.speed)}/s" if t.running else ""
+            return f"{speed} ⏱".strip() if t.limit_kbps else speed       # ⏱ : limite propre
         if col == 4:
             return human_time(_eta(t))
         if col == 5:

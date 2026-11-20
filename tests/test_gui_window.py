@@ -864,5 +864,61 @@ class LimitTest(WindowCase):
         self.assertEqual((w.settings["speed_kbps"], w.settings["speed_on"]), (300, True))
         self.assertEqual(w.limit_btn.text(), "Limité à 300 Ko/s")
 
+
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class TaskLimitMenuTest(WindowCase):
+    """Limite de vitesse d'un ou plusieurs téléchargements, depuis le clic droit."""
+
+    def tasks(self, w):
+        a, b = FakeDownload("https://a.fr/a.iso", self.cfg), FakeDownload("https://a.fr/b.iso", self.cfg)
+        done = FakeDownload("https://a.fr/c.iso", self.cfg)
+        done.status = "Terminé"
+        for t in (a, b, done):
+            w.model.add(t)
+        return [a, b, done]
+
+    def submenu(self, w, sel):
+        menu = w.build_context_menu(sel)
+        self.addCleanup(menu.deleteLater)
+        sub = next(a.menu() for a in menu.actions() if a.text() == "Limiter la vitesse")
+        sub.aboutToShow.emit()
+        return {a.text(): a for a in sub.actions() if not a.isSeparator()}
+
+    def test_appliquer_a_la_selection(self):
+        w = self.window()
+        sel = self.tasks(w)
+        self.submenu(w, sel)["512 Ko/s"].trigger()
+        self.assertEqual([t.limit_kbps for t in sel], [512, 512, 512])
+        self.assertTrue(self.submenu(w, sel)["512 Ko/s"].isChecked())      # valeur commune cochée
+        sel[0].limit_kbps = 1024
+        actions = self.submenu(w, sel)
+        self.assertFalse(any(a.isChecked() for a in actions.values()))       # valeurs différentes
+        actions["Sans limite"].trigger()
+        self.assertEqual([t.limit_kbps for t in sel], [0, 0, 0])
+
+    def test_autre_valeur(self):
+        w = self.window()
+        sel = self.tasks(w)[:1]
+        with mock.patch("pydm.gui.window.ask_limit", return_value=None):
+            self.submenu(w, sel)["Autre…"].trigger()
+        self.assertEqual(sel[0].limit_kbps, 0)
+        with mock.patch("pydm.gui.window.ask_limit", return_value=333):
+            self.submenu(w, sel)["Autre…"].trigger()
+        self.assertEqual(sel[0].limit_kbps, 333)
+
+    def test_reperage(self):
+        from PySide6.QtCore import Qt
+        w = self.window()
+        t = self.tasks(w)[0]
+        t.running, t.speed, t.limit_kbps = True, 500 * 1024, 512
+        w.model.refresh()
+        row = w.model.tasks().index(t)
+        idx = w.model.index(row, 3)
+        self.assertTrue(w.model.data(idx).endswith("⏱"))
+        self.assertEqual(w.model.data(idx, Qt.ToolTipRole), "Limité à 512 Ko/s")
+        w.detail.show_task(t)
+        self.assertIn("Limite", w.detail.text())
+        self.assertIn("512 Ko/s", w.detail.text())
+
 if __name__ == "__main__":
     unittest.main()

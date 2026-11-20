@@ -7,6 +7,13 @@ import re
 RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
 
 
+def limit_text(kbps):
+    """« 256 Ko/s », « 2 Mo/s », « 1.5 Mo/s »."""
+    if kbps < 1024:
+        return f"{kbps} Ko/s"
+    return f"{kbps / 1024:.1f}".rstrip("0").rstrip(".") + " Mo/s"
+
+
 def expand_path(path):
     """Chemin saisi par l'utilisateur : « ~ » développé, séparateurs du système (pas de « C:\\x/y »)."""
     return os.path.normpath(os.path.expanduser(path))

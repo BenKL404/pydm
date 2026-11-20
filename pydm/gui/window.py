@@ -430,6 +430,19 @@ class MainWindow(QMainWindow):
         self.limit_btn.setText(f"Limité à {limit_text(s['speed_kbps'])}" if s["speed_on"] else "Vitesse illimitée")
         self.limit_btn.setChecked(s["speed_on"])
 
+    def set_tasks_limit(self, tasks, kbps):
+        """Limite propre aux téléchargements choisis (0 : aucune) ; s'applique tout de suite."""
+        for t in tasks:
+            t.limit_kbps = kbps
+        self.dirty = True                   # mémorisée avec la session
+        self.model.refresh()
+        self._update_detail()
+
+    def _ask_tasks_limit(self, tasks):
+        kbps = ask_limit(self, next((t.limit_kbps for t in tasks if t.limit_kbps), 1024))
+        if kbps:
+            self.set_tasks_limit(tasks, kbps)
+
     def set_global_limit(self, kbps):
         """Limite totale : 0 la coupe, une valeur l'enregistre et l'active."""
         if kbps:
@@ -715,6 +728,10 @@ class MainWindow(QMainWindow):
             any((t.running or t.want != "stop") and not t.finished for t in sel))
         menu.addAction(theme.icon("force"), "Forcer", self.force_selected)
         menu.addAction(theme.icon("schedule"), "Mettre dans la file", self.queue_selected)
+        limit_menu = menu.addMenu("Limiter la vitesse")
+        limit_menu.aboutToShow.connect(lambda: fill_limit_menu(
+            limit_menu, sel[0].limit_kbps if len({t.limit_kbps for t in sel}) == 1 else None,
+            lambda kbps: self.set_tasks_limit(sel, kbps), lambda: self._ask_tasks_limit(sel)))
         menu.addSeparator()
         menu.addAction("Monter\tCtrl+↑", lambda: self.move_selected(-1))
         menu.addAction("Descendre\tCtrl+↓", lambda: self.move_selected(1))

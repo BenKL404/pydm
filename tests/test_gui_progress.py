@@ -12,7 +12,7 @@ from tests.qt import HAS_QT, app
 def task(**kw):
     t = types.SimpleNamespace(url="https://iso.pop-os.org/pop.iso", name="pop.iso", folder="/tmp", size=1000,
                               speed=2048.0, running=True, finished=False, error=None, status="Téléchargement",
-                              want="now", resumable=True, parts=4, active_connections=2,
+                              want="now", resumable=True, parts=4, active_connections=2, limit_kbps=0,
                               segments=[[0, 499, 500], [500, 999, 120]])
     t.__dict__.update(kw)
     t.done = sum(s[2] for s in t.segments) if t.segments is not None else kw.get("done", 0)
@@ -176,6 +176,25 @@ class AutoOpenTest(unittest.TestCase):
         w._double_click(w.proxy.index(0, 0))
         self.assertEqual(len(w.progress_windows), 1)
 
+
+
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class ProgressLimitTest(ProgressDialogTest):
+    def test_limite_du_telechargement(self):
+        t = task()
+        d = self.dialog(t)
+        self.assertFalse(d.limit_box.isChecked())
+        d.limit_spin.setValue(300)
+        d.limit_box.setChecked(True)
+        self.assertEqual(t.limit_kbps, 300)
+        d.limit_spin.setValue(400)                      # réglable pendant le téléchargement
+        self.assertEqual(t.limit_kbps, 400)
+        d.limit_box.setChecked(False)
+        self.assertEqual(t.limit_kbps, 0)
+        t.limit_kbps = 700                              # changée ailleurs (menu de la liste)
+        d.refresh()
+        self.assertTrue(d.limit_box.isChecked())
+        self.assertEqual(d.limit_spin.value(), 700)
 
 if __name__ == "__main__":
     unittest.main()
