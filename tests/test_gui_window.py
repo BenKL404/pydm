@@ -537,8 +537,9 @@ class QueueCommandsTest(QueueTest):
         from pydm.scheduler import LIMITER
         self.addCleanup(setattr, LIMITER, "rate", 0)
         w = self.window()
-        self.assertEqual(w.limit_btn.text(), "Limite 2.0 Mo/s")
+        self.assertEqual(w.limit_btn.text(), "Vitesse illimitée")
         w.limit_btn.click()
+        self.assertEqual(w.limit_btn.text(), "Limité à 2 Mo/s")
         self.assertIs(w.settings["speed_on"], True)
         self.assertEqual(LIMITER.rate, 2048 * 1024)
         self.assertIs(store.load_settings(self.cfg)["speed_on"], True)
@@ -816,6 +817,52 @@ class MinorFixesTest(WindowCase):
         self.assertEqual(entries["https://www.youtube.com/watch?v=q"]["kind"], "video")
         self.assertIn("https://a.fr/en-analyse.zip", entries)
 
+
+
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class LimitTest(WindowCase):
+    """Limite globale : activer, couper et choisir la valeur depuis la barre d'état."""
+
+    def setUp(self):
+        super().setUp()
+        from pydm.scheduler import LIMITER
+        self.LIMITER = LIMITER
+        self.addCleanup(setattr, LIMITER, "rate", 0)
+
+    def menu(self, w):
+        m = w.limit_btn.menu()
+        m.aboutToShow.emit()
+        return {a.text(): a for a in m.actions() if not a.isSeparator()}
+
+    def test_libelles(self):
+        from pydm.gui.widgets import limit_text
+        self.assertEqual([limit_text(k) for k in (256, 1024, 1536, 10240)],
+                         ["256 Ko/s", "1 Mo/s", "1.5 Mo/s", "10 Mo/s"])
+
+    def test_menu_des_valeurs(self):
+        w = self.window()
+        actions = self.menu(w)
+        self.assertEqual(list(actions), ["Sans limite", "256 Ko/s", "512 Ko/s", "1 Mo/s", "2 Mo/s", "5 Mo/s",
+                                         "10 Mo/s", "Autre…"])
+        self.assertTrue(actions["Sans limite"].isChecked())          # limite coupée
+        actions["1 Mo/s"].trigger()
+        self.assertEqual((w.settings["speed_kbps"], w.settings["speed_on"]), (1024, True))
+        self.assertEqual(self.LIMITER.rate, 1024 * 1024)
+        self.assertEqual(w.limit_btn.text(), "Limité à 1 Mo/s")
+        self.assertTrue(self.menu(w)["1 Mo/s"].isChecked())
+        self.menu(w)["Sans limite"].trigger()
+        self.assertIs(w.settings["speed_on"], False)
+        self.assertEqual(self.LIMITER.rate, 0)
+
+    def test_autre_valeur(self):
+        w = self.window()
+        with mock.patch("pydm.gui.window.ask_limit", return_value=None):
+            self.menu(w)["Autre…"].trigger()
+        self.assertEqual((w.settings["speed_kbps"], w.settings["speed_on"]), (2048, False))   # annulé
+        with mock.patch("pydm.gui.window.ask_limit", return_value=300):
+            self.menu(w)["Autre…"].trigger()
+        self.assertEqual((w.settings["speed_kbps"], w.settings["speed_on"]), (300, True))
+        self.assertEqual(w.limit_btn.text(), "Limité à 300 Ko/s")
 
 if __name__ == "__main__":
     unittest.main()

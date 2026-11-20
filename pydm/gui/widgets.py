@@ -7,13 +7,42 @@ from collections import deque
 
 from PySide6.QtCore import QPointF, QSize, Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QPainter, QPen, QPolygonF, QTextLayout, QTextOption
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QToolButton, QVBoxLayout, QWidget
 
+from ..scheduler import LIMIT_PRESETS
 from ..util import human
 from . import theme
 
 
 ZWSP = "\u200b"
+LIMIT_RANGE = (16, 1_000_000)           # Ko/s, comme store.RANGES["speed_kbps"]
+
+
+def limit_text(kbps):
+    """« 256 Ko/s », « 2 Mo/s », « 1.5 Mo/s »."""
+    if kbps < 1024:
+        return f"{kbps} Ko/s"
+    return f"{kbps / 1024:.1f}".rstrip("0").rstrip(".") + " Mo/s"
+
+
+def ask_limit(parent, current):
+    """Valeur libre en Ko/s, ou None si annulé."""
+    value, ok = QInputDialog.getInt(parent, "Limite de vitesse", "Limite en Ko/s :", current or 1024,
+                                    *LIMIT_RANGE, 64)
+    return value if ok else None
+
+
+def fill_limit_menu(menu, current, choose, other):
+    """« Sans limite », valeurs proposées, « Autre… » ; `current` en Ko/s (0 : aucune, None : mélange)."""
+    menu.clear()
+    for kbps, text in [(0, "Sans limite")] + [(k, limit_text(k)) for k in LIMIT_PRESETS]:
+        action = menu.addAction(text, lambda k=kbps: choose(k))
+        action.setCheckable(True)
+        action.setChecked(current == kbps)
+        if kbps == 0:
+            menu.addSeparator()
+    menu.addSeparator()
+    menu.addAction("Autre…", other)
 
 
 def breakable(text, run=30, chunk=24):

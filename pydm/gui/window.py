@@ -43,7 +43,7 @@ from .model import DownloadFilter, DownloadModel, counts
 from .progress import ProgressDialog
 from .schedule import EndActionDialog, ScheduleDialog, run_end_action
 from .sidebar import Sidebar
-from .widgets import DetailPanel, EmptyState, SpeedSparkline
+from .widgets import DetailPanel, EmptyState, SpeedSparkline, ask_limit, fill_limit_menu, limit_text
 
 WIDTHS = (300, 80, 190, 90, 80, 170, 120)
 
@@ -112,8 +112,15 @@ class MainWindow(QMainWindow):
         self.status_speed.setContentsMargins(0, 0, 8, 0)
         self.limit_btn = QToolButton()
         self.limit_btn.setCheckable(True)
-        self.limit_btn.setToolTip("Limiter la vitesse totale (réglage dans Planification…)")
+        self.limit_btn.setToolTip("Cliquer pour activer ou couper la limite de vitesse totale ; "
+                                  "flèche : choisir la valeur")
         self.limit_btn.clicked.connect(self.toggle_limit)
+        self.limit_btn.setPopupMode(QToolButton.MenuButtonPopup)
+        limit_menu = QMenu(self.limit_btn)
+        limit_menu.aboutToShow.connect(lambda: fill_limit_menu(
+            limit_menu, self.settings["speed_kbps"] if self.settings["speed_on"] else 0,
+            self.set_global_limit, self._ask_global_limit))
+        self.limit_btn.setMenu(limit_menu)
         self.statusBar().addPermanentWidget(self.limit_btn)
         self.statusBar().addPermanentWidget(self.sparkline)
         self.apply_queue_settings()
@@ -420,8 +427,20 @@ class MainWindow(QMainWindow):
         self.scheduler.window = ((parse_hhmm(s["schedule_start"]), parse_hhmm(s["schedule_end"]))
                                  if s["schedule_on"] else None)
         LIMITER.rate = s["speed_kbps"] * 1024 if s["speed_on"] else 0
-        self.limit_btn.setText(f"Limite {human(s['speed_kbps'] * 1024)}/s")
+        self.limit_btn.setText(f"Limité à {limit_text(s['speed_kbps'])}" if s["speed_on"] else "Vitesse illimitée")
         self.limit_btn.setChecked(s["speed_on"])
+
+    def set_global_limit(self, kbps):
+        """Limite totale : 0 la coupe, une valeur l'enregistre et l'active."""
+        if kbps:
+            self._set("speed_kbps", kbps)
+        self._set("speed_on", bool(kbps))
+        self.apply_queue_settings()
+
+    def _ask_global_limit(self):
+        kbps = ask_limit(self, self.settings["speed_kbps"])
+        if kbps:
+            self.set_global_limit(kbps)
 
     def toggle_limit(self):
         self._set("speed_on", not self.settings["speed_on"])
