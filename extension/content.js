@@ -3,11 +3,13 @@
   if (window.__pydmLoaded) return;
   window.__pydmLoaded = true;
   const api = globalThis.browser ?? chrome;
+  const TOP = window === window.top;
+  const MARK = "pydm-video";      // marqueur des messages entre cadres
   let enabled = true;
   let host, button, label, current, hideTimer, resetTimer, lastScan = 0, hovered = false, queued = false;
   let style = "long";     // long | survol | rond (réglé dans la fenêtre de l'extension)
   let found = [], scanned = 0, taken = null, placed = null;
-  let openTimer, idle = 0;
+  let openTimer, idle = 0, remote = null;
 
   function dress() {
     if (host) host.className = style === "long" ? "" : style;
@@ -37,6 +39,54 @@
     return best;
   }
 
+  // Rectangle d'une vidéo d'un cadre enfant, ramené dans nos coordonnées et borné au cadre :
+  // un lecteur plus grand que son cadre ne doit pas faire sortir la barre de celui-ci.
+  function insideFrame(frame, rect) {
+    const left = Math.max(frame.left + rect.left, frame.left);
+    const top = Math.max(frame.top + rect.top, frame.top);
+    return {
+      left,
+      top,
+      right: Math.max(left, Math.min(frame.left + rect.right, frame.right)),
+      bottom: Math.max(top, Math.min(frame.top + rect.bottom, frame.bottom)),
+    };
+  }
+
+  function rectOf(target) {
+    return target.rect || target.getBoundingClientRect();
+  }
+
+  // Un cadre enfant ne peut rien dessiner hors de lui-même : il décrit sa vidéo à sa page parente,
+  // qui pose la barre au-dessus du cadre. Le message remonte de cadre en cadre jusqu'en haut.
+  function report(video, rect) {
+    const r = rect || video.getBoundingClientRect();
+    parent.postMessage({
+      [MARK]: true,
+      rect: { left: r.left, top: r.top, right: r.right, bottom: r.bottom },
+      src: video ? video.currentSrc || video.src || "" : "",
+      href: location.href,
+    }, "*");
+  }
+
+  addEventListener("message", (e) => {
+    const d = e.data;
+    if (!d || d[MARK] !== true || !d.rect || !enabled) return;
+    const frames = document.querySelectorAll("iframe, frame");
+    const frame = Array.prototype.find.call(frames, (f) => f.contentWindow === e.source);
+    if (!frame) return;             // message d'une fenêtre qui n'est pas un de nos cadres
+    const rect = insideFrame(frame.getBoundingClientRect(), d.rect);
+    if (!TOP) {
+      parent.postMessage({ ...d, rect }, "*");      // cadre imbriqué : on fait suivre vers le haut
+      return;
+    }
+    remote = remote || {};
+    Object.assign(remote, { rect, src: d.src, href: d.href, at: Date.now() });
+  });
+
+  function freshRemote() {
+    return remote && Date.now() - remote.at < 4000 ? remote : null;
+  }
+
   function sweep() {
     if (!enabled || hovered) return;
     if (idle > 4 && idle % 3) {         // page sans vidéo : on espace la recherche
@@ -44,13 +94,16 @@
       return;
     }
     const best = bestVideo({ width: innerWidth, height: innerHeight });
-    if (best) {
+    if (!TOP) {                     // cadre enfant : on décrit, on ne dessine pas
+      if (best) report(best);
+      return;
+    }
+    const target = best || freshRemote();
+    if (target) {
       idle = 0;
-      if (best !== current) {
-        clearTimeout(hideTimer);
-        place(best);
-        open();
-      }
+      clearTimeout(hideTimer);
+      if (target !== current) open();
+      place(target);
     } else {
       idle++;
       if (current) hide();
@@ -227,7 +280,7 @@
     const view = { width: innerWidth, height: innerHeight };
     const parent = document.fullscreenElement || document.documentElement;
     if (host.parentNode !== parent) parent.appendChild(host);
-    const at = pickCorner(video.getBoundingClientRect(), view, (spot) => {
+    const at = pickCorner(rectOf(video), view, (spot) => {
       apply(spot);        // posée pour de vrai : seul le test de survol dit qui est devant
       const front = document.elementFromPoint(spot.cx, spot.cy);
       return front === host || host.contains(front);
@@ -279,6 +332,10 @@
     if (!enabled || e.timeStamp - lastScan < 150) return;
     lastScan = e.timeStamp;
     const v = videoUnder(e.clientX, e.clientY);
+    if (v && !TOP) {
+      report(v);
+      return;
+    }
     if (v) {
       clearTimeout(hideTimer);
       if (v !== current) open();
@@ -299,12 +356,14 @@
   async function onClick(e) {
     e.preventDefault();
     e.stopPropagation();
-    const src = current?.currentSrc || current?.src || "";
+    const distante = current && current.rect;       // vidéo d'un cadre enfant
+    const src = distante ? current.src : (current?.currentSrc || current?.src || "");
+    const pageUrl = distante ? current.href : location.href;
     clearTimeout(resetTimer);
     show("busy", "Envoi à PyDM…");
     let reply;
     try {
-      reply = await api.runtime.sendMessage({ type: "video", pageUrl: location.href, src });
+      reply = await api.runtime.sendMessage({ type: "video", pageUrl, src });
     } catch (err) {
       reply = { ok: false, error: String(err) };
     }

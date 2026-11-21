@@ -11,7 +11,7 @@ function human(n) {
 
 function feedback(btn, reply) {
   const old = btn.textContent;
-  btn.textContent = reply?.ok ? "✓ Envoyé" : "✗ Échec";
+  btn.textContent = reply?.ok ? "Envoyé" : "Échec";
   setTimeout(() => { btn.textContent = old; }, 2000);
 }
 
@@ -19,7 +19,7 @@ function feedback(btn, reply) {
   const [tab] = await api.tabs.query({ active: true, currentWindow: true });
 
   const ping = await api.runtime.sendMessage({ type: "ping" });
-  $("status").textContent = ping?.ok ? (ping.ytdlp ? "Connecté ✓" : "Connecté (sans yt-dlp)") : "Non connecté";
+  $("status").textContent = ping?.ok ? (ping.ytdlp ? "Connecté" : "Connecté · sans yt-dlp") : "Non connecté";
   $("status").className = ping?.ok ? "ok" : "err";
   $("help").style.display = ping?.ok ? "none" : "block";
 
@@ -53,7 +53,7 @@ function feedback(btn, reply) {
       meta.textContent = [m.type, human(m.size)].filter(Boolean).join(" · ");
       info.append(name, meta);
       const btn = document.createElement("button");
-      btn.textContent = "⬇";
+      btn.textContent = "Télécharger";
       btn.title = "Télécharger avec PyDM";
       btn.addEventListener("click", async () => {
         const kind = m.type === "HLS" || m.type === "DASH" ? "video" : "file";

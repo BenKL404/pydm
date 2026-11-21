@@ -160,6 +160,32 @@ class PlacementTest(unittest.TestCase):
         self.assertIn("border-radius: 4px", src)
         self.assertIn(":host(.rond) button, :host(.survol) button { border-radius: 17px;", src)
 
+    def test_video_d_un_cadre_ramenee_dans_la_page(self):
+        """Un lecteur embarqué : son rectangle est traduit, et borné au cadre."""
+        src = open(os.path.join(ROOT, "extension", "content.js")).read()
+        code = re.search(r"^  function insideFrame\(.*?^  \}", src, re.M | re.S).group(0)
+        out = subprocess.run(["node", "-e", code + """
+          const cadre = { left: 100, top: 300, right: 900, bottom: 750 };
+          console.log(JSON.stringify({
+            simple: insideFrame(cadre, { left: 0, top: 0, right: 800, bottom: 450 }),
+            decale: insideFrame(cadre, { left: 20, top: 10, right: 420, bottom: 260 }),
+            deborde: insideFrame(cadre, { left: -50, top: -20, right: 1200, bottom: 900 }),
+          }));
+        """], capture_output=True, text=True, timeout=30)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        got = json.loads(out.stdout)
+        self.assertEqual(got["simple"], {"left": 100, "top": 300, "right": 900, "bottom": 750})
+        self.assertEqual(got["decale"], {"left": 120, "top": 310, "right": 520, "bottom": 560})
+        self.assertEqual(got["deborde"], {"left": 100, "top": 300, "right": 900, "bottom": 750},
+                         "un lecteur plus grand que son cadre ne doit pas en faire sortir la barre")
+
+    def test_cadres_rapportent_au_lieu_de_dessiner(self):
+        src = open(os.path.join(ROOT, "extension", "content.js")).read()
+        self.assertIn("const TOP = window === window.top", src)
+        self.assertIn("if (!TOP) {                     // cadre enfant : on décrit, on ne dessine pas", src)
+        self.assertIn('parent.postMessage({ ...d, rect }, "*")', src)      # cadres imbriqués
+        self.assertIn("f.contentWindow === e.source", src)                 # message d'un vrai cadre
+
     def test_affichee_sans_survol(self):
         """La barre se montre toute seule dès qu'une vidéo est visible."""
         src = open(os.path.join(ROOT, "extension", "content.js")).read()

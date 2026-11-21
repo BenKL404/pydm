@@ -12,6 +12,13 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - The download badge shows up on its own as soon as a video is visible, without
   having to move the pointer over the player, and shrinks to its icon after a
   few seconds. Hovering it opens it again.
+- Embedded players: a script running inside a frame cannot draw outside it, so
+  the badge stayed inside the video on every site that embeds its player. The
+  frame now describes its video to the page above it, which draws the badge
+  over the frame — through nested frames too.
+- The extension popup was redesigned: no wrapped button labels, settings
+  aligned on their first line with a hint below, and a status dot instead of a
+  check mark.
 - It is now a rectangle rather than a pill, and sits flush against the video:
   just above its top-right corner, or inside that corner when the video touches
   the top of the window or lives in an embedded frame, where there is no room
