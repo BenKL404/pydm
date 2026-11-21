@@ -106,6 +106,57 @@ class WindowTest(WindowCase):
         self.assertTrue(self.tick_until(w, lambda: self.factory.calls))
         self.assertEqual(self.factory.calls[0]["title"], "Le Seigneur des anneaux")
 
+    def test_lien_deja_telecharge_demande(self):
+        """Comme IDM : un lien déjà pris est signalé, et rien ne part sans l'accord de l'utilisateur."""
+        w = self.window()
+        w.add_urls(["https://a.fr/film.bin"])
+        self.assertTrue(self.tick_until(w, lambda: self.factory.calls))
+        self.assertTrue(self.tick_until(w, lambda: w.model.rowCount() == 1))
+        w.model.task(0).status = "Terminé"
+        vus = []
+
+        def demande(t):
+            vus.append(t)
+            return "cancel"
+        w._ask_duplicate = demande
+        w.add_urls(["https://a.fr/film.bin"])
+        self.assertEqual(len(vus), 1, "l'utilisateur doit être prévenu")
+        self.assertEqual(w.model.rowCount(), 1, "rien ne doit être ajouté après « Annuler »")
+
+        w._ask_duplicate = lambda t: "again"
+        w.add_urls(["https://a.fr/film.bin"])
+        self.assertTrue(self.tick_until(w, lambda: w.model.rowCount() == 2))
+
+    def test_boite_du_doublon_construite_pour_de_vrai(self):
+        """La boîte est bâtie sans leurre : un import oublié s'y verrait tout de suite."""
+        from PySide6.QtWidgets import QMessageBox
+        w = self.window()
+        w.add_urls(["https://a.fr/film.bin"])
+        self.assertTrue(self.tick_until(w, lambda: w.model.rowCount() == 1))
+        t = w.model.task(0)
+        t.status, t.name = "Terminé", "film.bin"
+        with mock.patch.object(QMessageBox, "exec", lambda self: None):
+            self.assertEqual(w._ask_duplicate(t), "cancel")     # aucun bouton cliqué
+        with mock.patch.object(QMessageBox, "exec", lambda self: None), \
+             mock.patch.object(QMessageBox, "clickedButton", lambda self: self.buttons()[0]):
+            self.assertEqual(w._ask_duplicate(t), "again")      # premier bouton : télécharger
+
+    def test_lien_inconnu_ne_demande_rien(self):
+        w = self.window()
+        w._ask_duplicate = lambda t: self.fail("aucune question pour un lien nouveau")
+        w.add_urls(["https://a.fr/nouveau.bin"])
+        self.assertTrue(self.tick_until(w, lambda: w.model.rowCount() == 1))
+
+    def test_avertissement_desactivable(self):
+        self.settings["warn_duplicate"] = False
+        w = self.window()
+        w.add_urls(["https://a.fr/film.bin"])
+        self.assertTrue(self.tick_until(w, lambda: w.model.rowCount() == 1))
+        w.model.task(0).status = "Terminé"
+        w._ask_duplicate = lambda t: self.fail("réglage désactivé : aucune question")
+        w.add_urls(["https://a.fr/film.bin"])
+        self.assertTrue(self.tick_until(w, lambda: w.model.rowCount() == 2))
+
     def test_session_restauree(self):
         entries = [{"url": f"https://a.fr/{n}", "folder": self.cfg, "parts": 4, "name": None, "headers": {}}
                    for n in ("1.bin", "2.bin")]

@@ -28,6 +28,7 @@ DEFAULTS = {
     "autostart": False,
     "tray_hint_shown": False,
     "confirm_add": True,
+    "warn_duplicate": True,
     "show_progress": True,
     "sidebar": True,
     "max_active": 3,

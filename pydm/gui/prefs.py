@@ -74,11 +74,14 @@ class PreferencesDialog(QDialog):
             self.close_to_tray_box.setToolTip("Barre système indisponible sur ce bureau")
         self.confirm_box = QCheckBox("Demander avant chaque téléchargement (qualité, nom, dossier)")
         self.confirm_box.setChecked(settings["confirm_add"])
+        self.duplicate_box = QCheckBox("Prévenir quand un lien a déjà été téléchargé")
+        self.duplicate_box.setChecked(settings["warn_duplicate"])
         self.progress_box = QCheckBox("Afficher la progression au démarrage d'un téléchargement")
         self.progress_box.setChecked(settings["show_progress"])
         self.autostart_box = QCheckBox("Démarrer PyDM avec la session")
         self.autostart_box.setChecked(settings["autostart"])
-        for box in (self.confirm_box, self.progress_box, self.clipboard_box, self.notify_box, self.close_to_tray_box,
+        for box in (self.confirm_box, self.duplicate_box, self.progress_box, self.clipboard_box,
+                    self.notify_box, self.close_to_tray_box,
                     self.autostart_box):
             form.addRow("", box)
 
@@ -126,6 +129,7 @@ class PreferencesDialog(QDialog):
             else self.settings["close_to_tray"],
             autostart=self.autostart_box.isChecked(),
             confirm_add=self.confirm_box.isChecked(),
+            warn_duplicate=self.duplicate_box.isChecked(),
             show_progress=self.progress_box.isChecked(),
             sort_by_type=self.sort_box.isChecked(),
             category_dirs={k: e.text().strip() or store.DEFAULTS["category_dirs"][k]

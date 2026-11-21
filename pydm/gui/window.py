@@ -10,9 +10,9 @@ from datetime import datetime
 
 from PySide6.QtCore import QByteArray, QEvent, QItemSelection, QItemSelectionModel, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QGuiApplication, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
-                               QMainWindow, QMenu, QMessageBox, QPushButton, QSplitter, QTableView,
-                               QToolButton, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel,
+                               QLineEdit, QMainWindow, QMenu, QMessageBox, QPushButton, QSplitter,
+                               QTableView, QToolButton, QVBoxLayout, QWidget)
 
 from .. import __version__, ipc, store
 from ..analyze import analyze
@@ -388,7 +388,61 @@ class MainWindow(QMainWindow):
         self.link.clear()
         self.add_urls(urls)
 
+    def known_task(self, url):
+        """Tâche déjà présente pour ce lien (la plus récente), ou None."""
+        for row in range(self.model.rowCount() - 1, -1, -1):
+            t = self.model.task(row)
+            if t.url == url:
+                return t
+        return None
+
+    def _ask_duplicate(self, task):
+        """Prévient qu'un lien est déjà pris ; renvoie « again », « open » ou « cancel »."""
+        box = QMessageBox(self)
+        box.setWindowTitle("Déjà téléchargé")
+        quand = datetime.fromtimestamp(task.added).strftime("%d/%m/%Y à %H:%M")
+        present = task.finished and not getattr(task, "missing", False)
+        if task.finished:
+            box.setText(f"« {task.name or task.url} » a déjà été téléchargé le {quand}.")
+            box.setInformativeText("Le fichier est toujours là." if present
+                                   else "Le fichier n'est plus à sa place.")
+        else:
+            box.setText(f"« {task.name or task.url} » est déjà dans la liste.")
+            box.setInformativeText(f"Ajouté le {quand} · {task.status}")
+        again = box.addButton("Télécharger à nouveau", QMessageBox.AcceptRole)
+        opened = box.addButton("Ouvrir le fichier", QMessageBox.ActionRole) if present else None
+        box.addButton("Annuler", QMessageBox.RejectRole)
+        box.setDefaultButton(again if not present else opened)
+        never = QCheckBox("Ne plus demander")
+        box.setCheckBox(never)
+        box.exec()
+        if never.isChecked():
+            self.settings["warn_duplicate"] = False
+            store.save_settings(self.settings)
+        clicked = box.clickedButton()
+        return "again" if clicked is again else ("open" if opened and clicked is opened else "cancel")
+
+    def _not_already_taken(self, urls):
+        """Écarte les liens déjà pris que l'utilisateur ne veut pas reprendre."""
+        if not self.settings.get("warn_duplicate", True):
+            return urls
+        keep = []
+        for url in urls:
+            known = self.known_task(url)
+            if known is None:
+                keep.append(url)
+                continue
+            answer = self._ask_duplicate(known)
+            if answer == "again":
+                keep.append(url)
+            elif answer == "open":
+                self.open_file(known)
+        return keep
+
     def add_urls(self, urls, headers=None, filename=None, kind="auto", title=None):
+        urls = self._not_already_taken(list(urls))
+        if not urls:
+            return
         if self.end_dialog:             # de nouveaux téléchargements : on n'éteint plus
             self.end_dialog.reject()
             self.statusBar().showMessage("Action de fin de file annulée : nouveau téléchargement", 8000)

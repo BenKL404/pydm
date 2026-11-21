@@ -7,20 +7,12 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
-
-- A finished download whose file was later moved or deleted came back as a
-  fresh, paused task with an unknown size, because the session kept no trace of
-  its progress. It now stays finished at 100 % and the status reads
-  "Terminé · fichier déplacé".
-
-### Changed
-
-- The toolbar's menu button now carries a gear rather than the sliders icon,
-  which read as filters.
-
 ### Added
 
+- Already downloaded: adding a link PyDM has already taken now says so — with
+  the date, and whether the file is still in place — and offers to download it
+  again, open the existing file, or cancel, the way IDM does. The warning can
+  be turned off from the dialog or from the preferences.
 - Add dialog: when a site offers no thumbnail — most embedded players do not —
   the first frame of the stream is grabbed with ffmpeg and shown in its place.
   It is taken a couple of seconds in, since videos often open on black, and
@@ -35,13 +27,23 @@ and the project follows [Semantic Versioning](https://semver.org/).
   the badge stayed inside the video on every site that embeds its player. The
   frame now describes its video to the page above it, which draws the badge
   over the frame — through nested frames too.
+- The badge is now a rectangle rather than a pill, reads "Télécharger la
+  vidéo", and sits flush against the video: just above its top-right corner, or
+  inside that corner when the video touches the top of the window or lives in
+  an embedded frame, where there is no room above it. Its shape is a setting:
+  the full bar, a circle that expands on hover, or a circle alone.
 - The extension popup was redesigned: no wrapped button labels, settings
   aligned on their first line with a hint below, and a status dot instead of a
   check mark.
-- It is now a rectangle rather than a pill, and sits flush against the video:
-  just above its top-right corner, or inside that corner when the video touches
-  the top of the window or lives in an embedded frame, where there is no room
-  above it.
+- The toolbar's menu button now carries a gear rather than the sliders icon,
+  which read as filters.
+
+### Fixed
+
+- A finished download whose file was later moved or deleted came back as a
+  fresh, paused task with an unknown size, because the session kept no trace of
+  its progress. It now stays finished at 100 % and the status reads
+  "Terminé · fichier déplacé".
 
 ## [1.8.3] - 2026-11-21
 
