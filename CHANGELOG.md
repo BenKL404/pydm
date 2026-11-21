@@ -45,6 +45,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
   eight readings. A real download — 604 fragments, the first fifteen twice as
   heavy as the rest — was announcing 3.6 GB for a 1.9 GB file all the way
   through; it now settles on the right figure at 4 % progress.
+- The download list no longer prefixes an estimated size with "≈": the figure
+  is shown plainly.
 - The displayed size holds still: a number that shifts with every fragment
   looks like a download going wrong. It is only corrected when the estimate
   drifts more than 15 % away from it, so a typical download shows one figure

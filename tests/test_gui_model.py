@@ -1,6 +1,7 @@
 import time
 import unittest
 
+from pydm.util import human
 from tests.qt import HAS_QT, app
 
 
@@ -211,9 +212,9 @@ if __name__ == "__main__":
 
 @unittest.skipUnless(HAS_QT, "PySide6 absent")
 class TailleApproximativeTest(unittest.TestCase):
-    """Une taille extrapolée doit se présenter comme telle, pas comme une mesure."""
+    """La taille s'affiche nue : un signe d'approximation inquiète plus qu'il n'informe."""
 
-    def test_marque_les_estimations(self):
+    def test_aucun_signe_d_approximation(self):
         from pydm.gui.model import DownloadModel
         app()
         sur = FakeTask(name="a.mp4", size=1000, done=500)
@@ -223,8 +224,8 @@ class TailleApproximativeTest(unittest.TestCase):
         model.add(sur)
         model.add(estime)
         textes = [model.data(model.index(r, 1)) for r in range(2)]
-        self.assertFalse(textes[0].startswith("≈"), textes[0])
-        self.assertTrue(textes[1].startswith("≈ "), textes[1])
+        self.assertEqual(textes, [human(1000), human(2_300_000_000)])
+        self.assertNotIn("≈", "".join(textes))
 
 
 @unittest.skipUnless(HAS_QT, "PySide6 absent")
