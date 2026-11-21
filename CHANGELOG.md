@@ -7,6 +7,16 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The download badge shows up on its own as soon as a video is visible, without
+  having to move the pointer over the player, and shrinks to its icon after a
+  few seconds. Hovering it opens it again.
+- It is now a rectangle rather than a pill, and sits flush against the video:
+  just above its top-right corner, or inside that corner when the video touches
+  the top of the window or lives in an embedded frame, where there is no room
+  above it.
+
 ## [1.8.3] - 2026-11-21
 
 ### Fixed

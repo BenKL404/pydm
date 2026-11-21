@@ -50,6 +50,15 @@ PLACEMENTS = {
 class PlacementTest(unittest.TestCase):
     """La pastille doit rester dans la vidéo visible *et* dans un coin qui n'est pas déjà pris."""
 
+    def run_js_brut(self, script):
+        """Exécute bestVideo seule, avec une liste de vidéos factice."""
+        src = open(os.path.join(ROOT, "extension", "content.js")).read()
+        code = re.search(r"^  function bestVideo\(.*?^  \}", src, re.M | re.S).group(0)
+        code = code.replace("videos()", "globalThis.videos()")
+        out = subprocess.run(["node", "-e", code + "\n" + script], capture_output=True, text=True, timeout=30)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return json.loads(out.stdout)
+
     def run_js(self, script):
         src = open(os.path.join(ROOT, "extension", "content.js")).read()
         code = re.search(r"^  const WIDTH = .*?^  function near\(.*?^  \}", src, re.M | re.S).group(0)
@@ -72,15 +81,24 @@ class PlacementTest(unittest.TestCase):
         left = at["left"] if at["align"] == "flex-start" else at["left"] + width - size
         return [left, at["top"], left + size, at["top"] + size]
 
-    def test_au_dessus_de_la_video_par_defaut(self):
-        """Comme IDM : hors de la vidéo, donc hors d'atteinte des commandes du lecteur."""
+    def test_au_dessus_et_collee_a_la_video(self):
+        """Hors de la vidéo, mais posée contre elle : ni marge, ni flottement."""
         at, width, size = self.pick(PLEINE)
         self.assertEqual((at["corner"], at["align"]), ("above", "flex-end"))
         gauche, haut, droite, bas = self.carre(at, width, size)
-        self.assertLessEqual(bas, PLEINE["top"], "la pastille mord sur la vidéo")
-        self.assertEqual([gauche, droite], [866, 900], "alignée sur le bord droit de la vidéo")
-        self.assertGreaterEqual(haut, 0, "sortie par le haut de la fenêtre")
+        self.assertEqual(bas, PLEINE["top"], "doit toucher le haut de la vidéo")
+        self.assertEqual([gauche, droite], [866, 900], "collée au bord droit de la vidéo")
         self.assertEqual(at["left"] + width, PLEINE["right"], "le bord droit doit coïncider")
+
+    def test_sans_place_au_dessus_collee_dans_la_video(self):
+        """Vidéo contre le haut de l'écran : à l'intérieur, mais contre son bord, pas flottante."""
+        for haut_video in (20, 0):
+            colle = {"left": 100, "top": haut_video, "right": 900, "bottom": 550}
+            at, width, size = self.pick(colle)
+            self.assertEqual(at["corner"], "tin", "haut = %d" % haut_video)
+            gauche, haut, droite, bas = self.carre(at, width, size)
+            self.assertEqual(haut, haut_video, "doit être collée au bord haut")
+            self.assertEqual(droite, colle["right"], "et au bord droit")
 
     def test_pastille_longue_reste_dans_la_fenetre_a_gauche(self):
         """Vidéo étroite collée au bord gauche : la version longue ne sort pas par la gauche."""
@@ -93,26 +111,21 @@ class PlacementTest(unittest.TestCase):
         self.assertGreaterEqual(gauche, 0)
         self.assertLessEqual(droite, VIEW["width"])
 
-    def test_sans_place_au_dessus_on_rentre_dans_la_video(self):
-        colle_en_haut = {"left": 100, "top": 20, "right": 900, "bottom": 550}
-        at, _, _ = self.pick(colle_en_haut)
-        self.assertEqual((at["corner"], at["align"]), ("tl", "flex-start"))      # repli : coins intérieurs
-
     def test_au_dessus_occupe_on_rentre_dans_la_video(self):
         at, _, _ = self.pick(PLEINE, occupes=["above"])
-        self.assertEqual((at["corner"], at["align"]), ("tl", "flex-start"))
+        self.assertEqual((at["corner"], at["align"]), ("tin", "flex-end"))
 
     def test_coin_occupe_evite(self):
-        at, _, _ = self.pick(PLEINE, occupes=["above", "tl"])
-        self.assertEqual((at["corner"], at["align"]), ("tr", "flex-end"))
+        at, _, _ = self.pick(PLEINE, occupes=["above", "tin"])
+        self.assertEqual((at["corner"], at["align"]), ("tl", "flex-start"))
 
     def test_descend_quand_le_haut_est_pris(self):
-        self.assertEqual(self.pick(PLEINE, occupes=["above", "tl", "tr"])[0]["corner"], "bl")
-        self.assertEqual(self.pick(PLEINE, occupes=["above", "tl", "tr", "bl"])[0]["corner"], "br")
+        self.assertEqual(self.pick(PLEINE, occupes=["above", "tin", "tl"])[0]["corner"], "bl")
+        self.assertEqual(self.pick(PLEINE, occupes=["above", "tin", "tl", "bl"])[0]["corner"], "br")
 
     def test_tout_occupe_garde_la_place_habituelle(self):
         """Aucune place libre : on affiche quand même, plutôt que de disparaître."""
-        at, _, _ = self.pick(PLEINE, occupes=["above", "tl", "tr", "bl", "br"])
+        at, _, _ = self.pick(PLEINE, occupes=["above", "tin", "tl", "bl", "br"])
         self.assertEqual(at["corner"], "above")
 
     def test_place_precedente_essayee_en_premier(self):
@@ -134,15 +147,41 @@ class PlacementTest(unittest.TestCase):
         """ % (json.dumps(PLEINE), json.dumps(VIEW)))
         self.assertEqual(got, {"dessus": True, "juste_a_cote": True, "loin": False})
 
-    def test_libelle_et_styles_de_bouton(self):
-        """Libellé à la IDM, version longue par défaut, repli réservé au style « survol »."""
+    def test_barre_ouverte_puis_reduite(self):
+        """Ouverte d'elle-même quelques secondes, puis réduite ; rouverte au survol."""
         src = open(os.path.join(ROOT, "extension", "content.js")).read()
         self.assertIn('const LABEL = "Télécharger la vidéo"', src)
         self.assertIn('<span class="label">', src)
-        for ligne in src.splitlines():
-            if "max-width: 0" in ligne or "opacity: 0" in ligne:
-                self.assertIn(":host(.survol)", ligne, "le repli ne doit toucher que le style survol")
+        self.assertIn('host.classList.add("ouvert")', src)
+        self.assertRegex(src, r'setTimeout\(\(\) => host && host\.classList\.remove\("ouvert"\), SHRINK_MS\)')
+        self.assertIn(":host(.ouvert) .label, button:hover .label", src)
         self.assertIn(":host(.rond) .label { display: none; }", src)
+        # barre rectangulaire : le coin très arrondi ne reste que pour les formes rondes
+        self.assertIn("border-radius: 4px", src)
+        self.assertIn(":host(.rond) button, :host(.survol) button { border-radius: 17px;", src)
+
+    def test_affichee_sans_survol(self):
+        """La barre se montre toute seule dès qu'une vidéo est visible."""
+        src = open(os.path.join(ROOT, "extension", "content.js")).read()
+        self.assertIn("setInterval(sweep, SWEEP_MS)", src)
+        self.assertRegex(src, re.compile(r"^  function bestVideo\(", re.M))
+
+    def test_plus_grande_video_visible_choisie(self):
+        """Deux vidéos sur la page : celle qu'on voit le mieux l'emporte."""
+        got = self.run_js_brut("""
+          const rect = (o) => ({ getBoundingClientRect: () => o });
+          const petite = rect({ left: 0, top: 0, right: 300, bottom: 200, width: 300, height: 200 });
+          const grande = rect({ left: 0, top: 0, right: 900, bottom: 500, width: 900, height: 500 });
+          const hors = rect({ left: 2000, top: 0, right: 3000, bottom: 600, width: 1000, height: 600 });
+          const minuscule = rect({ left: 0, top: 0, right: 150, bottom: 100, width: 150, height: 100 });
+          globalThis.videos = () => [petite, grande, hors, minuscule];
+          const vue = { width: 1280, height: 800 };
+          console.log(JSON.stringify({
+            choisie: bestVideo(vue) === grande,
+            aucune: (globalThis.videos = () => [hors, minuscule], bestVideo(vue)) === null,
+          }));
+        """)
+        self.assertEqual(got, {"choisie": True, "aucune": True})
 
     def test_choix_du_style_dans_la_fenetre(self):
         """Les trois formes proposées doivent exister des deux côtés."""
@@ -167,7 +206,7 @@ class PlacementTest(unittest.TestCase):
 
     def test_toujours_dans_la_video_visible(self):
         for name, (rect, visible) in PLACEMENTS.items():
-            for corner in ("tl", "tr", "bl", "br"):
+            for corner in ("tin", "tl", "bl", "br"):
                 with self.subTest("%s/%s" % (name, corner)):
                     got, width, size = self.run_js("""
                       console.log(JSON.stringify(anchor(%s, %s, %s)));

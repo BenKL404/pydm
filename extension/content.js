@@ -7,9 +7,54 @@
   let host, button, label, current, hideTimer, resetTimer, lastScan = 0, hovered = false, queued = false;
   let style = "long";     // long | survol | rond (réglé dans la fenêtre de l'extension)
   let found = [], scanned = 0, taken = null, placed = null;
+  let openTimer, idle = 0;
 
   function dress() {
     if (host) host.className = style === "long" ? "" : style;
+  }
+
+  // La barre s'ouvre à l'apparition, puis se réduit : visible sans effort, discrète ensuite.
+  function open() {
+    clearTimeout(openTimer);
+    if (!host || style !== "long") return;
+    host.classList.add("ouvert");
+    openTimer = setTimeout(() => host && host.classList.remove("ouvert"), SHRINK_MS);
+  }
+
+  // Plus grande vidéo réellement visible : la pastille se montre sans attendre le survol.
+  function bestVideo(view) {
+    let best = null, area = 0;
+    for (const v of videos()) {
+      const r = v.getBoundingClientRect();
+      if (r.width < 200 || r.height < 120) continue;
+      const w = Math.min(r.right, view.width) - Math.max(r.left, 0);
+      const h = Math.min(r.bottom, view.height) - Math.max(r.top, 0);
+      if (w > 0 && h > 0 && w * h > area) {
+        best = v;
+        area = w * h;
+      }
+    }
+    return best;
+  }
+
+  function sweep() {
+    if (!enabled || hovered) return;
+    if (idle > 4 && idle % 3) {         // page sans vidéo : on espace la recherche
+      idle++;
+      return;
+    }
+    const best = bestVideo({ width: innerWidth, height: innerHeight });
+    if (best) {
+      idle = 0;
+      if (best !== current) {
+        clearTimeout(hideTimer);
+        place(best);
+        open();
+      }
+    } else {
+      idle++;
+      if (current) hide();
+    }
   }
 
   api.storage.local.get(["videoButton", "videoStyle"]).then((s) => {
@@ -32,7 +77,9 @@
   // le bouton « image dans l'image » de Firefox vivent *dans* la vidéo, et celui de Firefox est
   // dessiné par le navigateur — aucun z-index ne passe devant. Hors de la vidéo, personne ne
   // nous recouvre. Les coins intérieurs ne servent que faute de place au-dessus.
-  const CORNERS = ["above", "tl", "tr", "bl", "br"];
+  const CORNERS = ["above", "tin", "tl", "bl", "br"];
+  const SWEEP_MS = 1500;  // recherche d'une vidéo sans attendre le survol
+  const SHRINK_MS = 5000; // après quoi la barre se réduit à sa pastille
 
   // Position du conteneur et centre de la pastille pour un coin de la partie *visible* de la
   // vidéo. Se contenter du rectangle de la vidéo la rendait inatteignable : hors de l'écran sur
@@ -42,10 +89,11 @@
     const left = Math.max(rect.left, 0), right = Math.min(rect.right, view.width);
     const top = Math.max(rect.top, 0), bottom = Math.min(rect.bottom, view.height);
     if (right - left < size + 2 * inset || bottom - top < size + 2 * inset) return null;
-    if (corner === "above") {
-      const by = top - inset - size;
-      if (by < 0) return null;              // vidéo collée au haut de la fenêtre : pas de place
-      // alignée sur le bord droit de la vidéo, sans jamais sortir de la fenêtre
+    if (corner === "above" || corner === "tin") {
+      // « above » : posée contre le bord haut, hors de la vidéo. « tin » : contre ce même bord,
+      // mais dedans, quand la vidéo touche le haut de la fenêtre ou tient dans un cadre.
+      const by = corner === "above" ? top - size : top;
+      if (by < 0) return null;
       const bx = Math.max(0, Math.min(right - width, view.width - width));
       return { corner, align: "flex-end", left: bx, top: by,
                cx: bx + width - size / 2, cy: by + size / 2 };
@@ -102,26 +150,24 @@
     // pastille au logo PyDM (anneau des connexions + flèche) qui s'allonge au survol
     root.innerHTML = `
       <style>
-        button { all: unset; pointer-events: auto; box-sizing: border-box; display: flex; align-items: center; gap: 8px;
-                 height: 34px; padding: 0 14px 0 6px; border-radius: 17px; cursor: pointer;
+        button { all: unset; pointer-events: auto; box-sizing: border-box; display: flex; align-items: center; gap: 0;
+                 height: 34px; padding: 0 6px; border-radius: 4px; cursor: pointer;
                  font: 600 13px/1 system-ui, -apple-system, "Segoe UI", sans-serif; color: #f8fafc;
                  background: rgba(15, 23, 42, .82); border: 1px solid rgba(148, 163, 184, .28);
                  -webkit-backdrop-filter: blur(10px) saturate(140%); backdrop-filter: blur(10px) saturate(140%);
                  box-shadow: 0 4px 16px rgba(0, 0, 0, .35);
-                 transition: background .2s, border-color .2s; }
-        /* « long » (défaut) : le libellé est lu sans survol */
-        .label { max-width: 220px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-        /* « rond » : l'icône seule ; « survol » : un rond qui s'allonge quand on le vise */
-        :host(.rond) button, :host(.survol) button { gap: 0; padding: 0 6px; }
+                 transition: gap .2s ease, padding .2s ease, background .2s, border-color .2s; }
+        .label { max-width: 0; opacity: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+                 transition: max-width .25s ease, opacity .2s ease; }
+        /* ouverte : à l'apparition pendant quelques secondes, au survol, et pendant l'envoi */
+        :host(.ouvert) button, button:hover, button:focus-visible,
+        button.busy, button.ok, button.err { gap: 8px; padding: 0 14px 0 6px; }
+        :host(.ouvert) .label, button:hover .label, button:focus-visible .label,
+        .busy .label, .ok .label, .err .label { max-width: 220px; opacity: 1; }
+        /* formes rondes : le coin très arrondi n'a de sens que pour elles */
+        :host(.rond) button, :host(.survol) button { border-radius: 17px; }
         :host(.rond) .label { display: none; }
-        :host(.survol) button { transition: gap .2s ease, padding .2s ease, background .2s, border-color .2s; }
-        :host(.survol) .label { max-width: 0; opacity: 0; transition: max-width .25s ease, opacity .2s ease; }
-        :host(.survol) button:hover, :host(.survol) button:focus-visible,
-        :host(.survol) button.busy, :host(.survol) button.ok, :host(.survol) button.err {
-                 gap: 8px; padding: 0 14px 0 6px; }
-        :host(.survol) button:hover .label, :host(.survol) button:focus-visible .label,
-        :host(.survol) .busy .label, :host(.survol) .ok .label, :host(.survol) .err .label {
-                 max-width: 220px; opacity: 1; }
+        :host(.rond) button:hover, :host(.rond) button.busy { gap: 0; padding: 0 6px; }
         button:hover { background: rgba(15, 23, 42, .94); border-color: rgba(34, 211, 238, .55); }
         button:focus-visible { outline: 2px solid #22d3ee; outline-offset: 2px; }
         svg { width: 22px; height: 22px; flex: none; }
@@ -148,8 +194,12 @@
     label = root.querySelector(".label");
     button.addEventListener("click", onClick);
     // le curseur est sur la pastille : ni effacement, ni déplacement sous le doigt
-    host.addEventListener("pointerenter", () => { hovered = true; clearTimeout(hideTimer); });
-    host.addEventListener("pointerleave", () => { hovered = false; });
+    host.addEventListener("pointerenter", () => {
+      hovered = true;
+      clearTimeout(hideTimer);
+      clearTimeout(openTimer);        // le survol suffit à l'ouvrir : pas de repli pendant ce temps
+    });
+    host.addEventListener("pointerleave", () => { hovered = false; open(); });
   }
 
   function show(state, text) {
@@ -231,6 +281,7 @@
     const v = videoUnder(e.clientX, e.clientY);
     if (v) {
       clearTimeout(hideTimer);
+      if (v !== current) open();
       place(v);
     } else if (current && (hovered || near(placed, e.clientX, e.clientY))) {
       clearTimeout(hideTimer);      // sur la pastille, ou en route vers elle hors de la vidéo
@@ -240,6 +291,7 @@
     }
   }, { passive: true, capture: true });
 
+  setInterval(sweep, SWEEP_MS);
   addEventListener("scroll", follow, { passive: true, capture: true });
   addEventListener("resize", follow, { passive: true });
   document.addEventListener("fullscreenchange", follow);
