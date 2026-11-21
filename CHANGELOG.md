@@ -40,6 +40,11 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Duplicate numbering piled up instead of carrying on: with `film.mp4` through
+  `film (3).mp4` already there, three more downloads became `film (3) (1)` and
+  `film (3) (2)`. Numbering now restarts from the root name — `film (4)`,
+  `film (5)` — while a number that belongs to the title, such as
+  `Matrix (2)` on a free name, is left alone.
 - A finished download whose file was later moved or deleted came back as a
   fresh, paused task with an unknown size, because the session kept no trace of
   its progress. It now stays finished at 100 % and the status reads

@@ -1,9 +1,10 @@
 import unittest
 
 import os
+import tempfile
 from unittest import mock
 
-from pydm.util import expand_path, safe_filename
+from pydm.util import expand_path, safe_filename, unique_path
 
 W = dict(windows=True)
 
@@ -41,3 +42,41 @@ class ExpandPathTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NumerotationTest(unittest.TestCase):
+    """Un nom déjà numéroté repart de sa racine : « (3) » donne « (4) », jamais « (3) (1) »."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = tmp.name
+
+    def pose(self, *noms):
+        for n in noms:
+            open(os.path.join(self.dir, n), "w").close()
+
+    def test_nom_libre_inchange(self):
+        self.assertEqual(unique_path(self.dir, "film.mp4"), "film.mp4")
+
+    def test_premier_doublon(self):
+        self.pose("film.mp4")
+        self.assertEqual(unique_path(self.dir, "film.mp4"), "film (1).mp4")
+
+    def test_repart_de_la_racine(self):
+        self.pose("film.mp4", "film (1).mp4", "film (2).mp4", "film (3).mp4")
+        self.assertEqual(unique_path(self.dir, "film (3).mp4"), "film (4).mp4")
+        self.assertEqual(unique_path(self.dir, "film.mp4"), "film (4).mp4")
+
+    def test_numero_legitime_conserve(self):
+        """« Matrix (2) » est un titre, pas un doublon : libre, on n'y touche pas."""
+        self.pose("Matrix.mp4")
+        self.assertEqual(unique_path(self.dir, "Matrix (2).mp4"), "Matrix (2).mp4")
+
+    def test_parentheses_qui_ne_sont_pas_un_numero(self):
+        self.pose("film (final).mp4")
+        self.assertEqual(unique_path(self.dir, "film (final).mp4"), "film (final) (1).mp4")
+
+    def test_part_et_pydm_comptent(self):
+        self.pose("film.mp4.part", "film (1).mp4.pydm")
+        self.assertEqual(unique_path(self.dir, "film.mp4"), "film (2).mp4")

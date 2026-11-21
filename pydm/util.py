@@ -50,11 +50,24 @@ def human_time(s):
     return f"{h}h{m:02d}m" if h else f"{m}m{s:02d}s"
 
 
+NUMBERED = re.compile(r" \((\d+)\)$")       # suffixe de doublon déjà posé sur un nom
+
+
 def unique_path(folder, name):
+    """Nom libre dans le dossier, suffixé « (n) » au besoin.
+
+    Un nom déjà numéroté repart de sa racine : « film (3).mp4 » occupé donne « film (4).mp4 »
+    et non « film (3) (1).mp4 ». Un numéro qui fait partie du titre — « Matrix (2) » encore
+    libre — est laissé tel quel.
+    """
     base, ext = os.path.splitext(name)
-    candidate, i = name, 1
-    while any(os.path.exists(os.path.join(folder, candidate + suffix))
-              for suffix in ("", ".part", ".pydm")):
-        candidate = f"{base} ({i}){ext}"
+
+    def free(candidate):
+        return not any(os.path.exists(os.path.join(folder, candidate + suffix))
+                       for suffix in ("", ".part", ".pydm"))
+    if free(name):
+        return name
+    root, i = NUMBERED.sub("", base), 1
+    while not free(f"{root} ({i}){ext}"):
         i += 1
-    return candidate
+    return f"{root} ({i}){ext}"

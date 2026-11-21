@@ -21,7 +21,7 @@ from .fingerprint import default_ua, pinned_ua
 from .netpolicy import classify, policy_for
 from .scheduler import LIMITER, RateLimiter
 from .signed import freshness
-from .util import safe_filename, unique_path
+from .util import NUMBERED, safe_filename, unique_path
 
 CHUNK = 64 * 1024
 MIN_SPLIT = 2 * 1024 * 1024
@@ -65,13 +65,20 @@ _CLAIMED = set()        # (dossier, nom de base) visés par les vidéos en cours
 
 
 def unique_stem(folder, stem, taken=()):
-    """Nom de base qu'aucun fichier « stem.* » ni aucune vidéo en cours n'occupe déjà."""
-    candidate, i = stem, 1
-    while candidate in taken or glob.glob(os.path.join(glob.escape(folder),
-                                                       glob.escape(candidate) + ".*")):
-        candidate = "%s (%d)" % (stem, i)
+    """Nom de base qu'aucun fichier « stem.* » ni aucune vidéo en cours n'occupe déjà.
+
+    Un nom déjà numéroté repart de sa racine : « Film (3) » pris donne « Film (4) » et non
+    « Film (3) (1) ». Un numéro qui fait partie du titre, encore libre, est conservé.
+    """
+    def free(candidate):
+        return candidate not in taken and not glob.glob(
+            os.path.join(glob.escape(folder), glob.escape(candidate) + ".*"))
+    if free(stem):
+        return stem
+    root, i = NUMBERED.sub("", stem), 1
+    while not free("%s (%d)" % (root, i)):
         i += 1
-    return candidate
+    return "%s (%d)" % (root, i)
 
 
 def better_name(name, title):

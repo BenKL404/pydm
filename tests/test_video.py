@@ -325,6 +325,31 @@ class VideoCookiesTest(unittest.TestCase):
             self.assertEqual(unique_stem(tmp, "Film", taken={"Film (2)"}), "Film (3)")
             self.assertEqual(unique_stem(tmp, "Autre"), "Autre")
 
+    def test_numerotation_repart_de_la_racine(self):
+        """« Film (3) » occupé donne « Film (4) », pas « Film (3) (1) »."""
+        from pydm.engine import unique_stem
+        with tempfile.TemporaryDirectory() as tmp:
+            for n in ("Film.mp4", "Film (1).mp4", "Film (2).mkv"):
+                open(os.path.join(tmp, n), "w").close()
+            self.assertEqual(unique_stem(tmp, "Film"), "Film (3)")
+            self.assertEqual(unique_stem(tmp, "Film", taken={"Film (3)"}), "Film (4)")
+            self.assertEqual(unique_stem(tmp, "Film (3)", taken={"Film (3)"}), "Film (4)")
+            self.assertEqual(unique_stem(tmp, "Film (3)", taken={"Film (3)", "Film (4)"}), "Film (5)")
+            self.assertEqual(unique_stem(tmp, "Matrix (2)"), "Matrix (2)")   # titre, pas doublon
+
+    def test_trois_videos_de_suite_apres_des_fichiers_existants(self):
+        """Le cas vu à l'écran : trois ajouts alors que trois fichiers du même nom sont déjà là."""
+        from pydm.engine import unique_stem
+        with tempfile.TemporaryDirectory() as tmp:
+            for n in ("Série.mp4", "Série (1).mp4", "Série (2).mp4"):
+                open(os.path.join(tmp, n), "w").close()
+            pris, noms = set(), []
+            for _ in range(3):
+                nom = unique_stem(tmp, "Série (3)", pris)      # nom déjà numéroté par la fenêtre
+                pris.add(nom)
+                noms.append(nom)
+        self.assertEqual(noms, ["Série (3)", "Série (4)", "Série (5)"])
+
     def test_videos_simultanees_noms_distincts(self):
         """Trois vidéos du même titre lancées ensemble ne doivent pas viser le même fichier."""
         import threading
