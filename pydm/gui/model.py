@@ -77,7 +77,8 @@ class DownloadModel(QAbstractTableModel):
 
     @staticmethod
     def _snap(t):
-        return (t.name, t.size, t.done, t.speed, t.status, t.running, t.error, t.limit_kbps)
+        return (t.name, t.size, t.done, t.speed, t.status, t.running, t.error, t.limit_kbps,
+                getattr(t, "missing", False))
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self._tasks)
@@ -196,7 +197,8 @@ class DownloadModel(QAbstractTableModel):
         if col == 4:
             return human_time(_eta(t))
         if col == 5:
-            return t.status
+            # terminé mais déplacé : la tâche a bien abouti, c'est le fichier qui n'est plus là
+            return t.status + (" · fichier déplacé" if getattr(t, "missing", False) else "")
         return datetime.fromtimestamp(t.added).strftime("%d/%m/%Y %H:%M")
 
     @staticmethod

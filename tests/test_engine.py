@@ -5,7 +5,8 @@ import unittest
 from unittest import mock
 
 from pydm import fingerprint, netpolicy
-from pydm.engine import Download, better_name, collapse_holes, probe
+from pydm.engine import (Download, better_name, collapse_holes, entry_from_task, probe,
+                         task_from_entry)
 from tests.httpserver import serve
 
 
@@ -494,3 +495,55 @@ class NomLisibleTest(unittest.TestCase):
             d.start()
             wait(d, 60)
             self.assertEqual(os.path.basename(d.path), "choisi.mp4")
+
+
+class FichierDeplaceTest(unittest.TestCase):
+    """Un téléchargement terminé dont le fichier a bougé reste terminé, et le dit."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = tmp.name
+
+    def fini(self, nom="film.mp4", taille=4096):
+        """Tâche terminée telle qu'elle est en session, fichier présent sur le disque."""
+        with open(os.path.join(self.dir, nom), "wb") as f:
+            f.write(b"x" * taille)
+        d = Download("https://a.fr/" + nom, self.dir, parts=2, name=nom)
+        return d
+
+    def test_session_retient_la_taille(self):
+        e = entry_from_task(self.fini())
+        self.assertEqual((e["size"], e["done"]), (4096, 4096))
+        self.assertIs(e["finished"], True)
+
+    def test_fichier_toujours_la(self):
+        t = task_from_entry(entry_from_task(self.fini()))
+        self.assertEqual(t.status, "Terminé")
+        self.assertFalse(t.missing)
+        self.assertEqual((t.size, t.done), (4096, 4096))
+
+    def test_fichier_deplace(self):
+        e = entry_from_task(self.fini())
+        os.remove(os.path.join(self.dir, "film.mp4"))       # l'utilisateur l'a rangé ailleurs
+        t = task_from_entry(e)
+        self.assertEqual(t.status, "Terminé", "doit rester terminé")
+        self.assertTrue(t.finished)
+        self.assertTrue(t.missing, "doit signaler que le fichier n'est plus là")
+        self.assertEqual((t.size, t.done), (4096, 4096), "avancement conservé")
+        self.assertEqual(t.want, "stop", "pas de reprise toute seule")
+
+    def test_tache_en_cours_inchangee(self):
+        d = Download("https://a.fr/x.bin", self.dir, parts=2)
+        e = entry_from_task(d)
+        self.assertIs(e["finished"], False)
+        t = task_from_entry(e)
+        self.assertNotEqual(t.status, "Terminé")
+        self.assertFalse(t.missing)
+
+    def test_ancienne_session_relue(self):
+        """Les entrées d'avant ce champ n'ont ni size ni done : rien ne doit casser."""
+        t = task_from_entry({"url": "https://a.fr/f.bin", "folder": self.dir, "parts": 4,
+                             "name": None, "headers": {}})
+        self.assertFalse(t.missing)
+        self.assertIsNone(t.size)

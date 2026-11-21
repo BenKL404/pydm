@@ -7,6 +7,13 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A finished download whose file was later moved or deleted came back as a
+  fresh, paused task with an unknown size, because the session kept no trace of
+  its progress. It now stays finished at 100 % and the status reads
+  "Terminé · fichier déplacé".
+
 ### Changed
 
 - The toolbar's menu button now carries a gear rather than the sliders icon,

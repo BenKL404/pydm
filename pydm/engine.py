@@ -154,6 +154,11 @@ class _Task:
     size_approx = False         # taille seulement estimée (flux fragmenté en cours)
 
     @property
+    def missing(self):
+        """Terminé, mais le fichier a été déplacé ou supprimé depuis."""
+        return bool(self.finished and self.name and not os.path.exists(self.path))
+
+    @property
     def finished(self):
         return self.status == "Terminé"
 
@@ -836,7 +841,9 @@ def entry_from_task(t):
     """Entrée de session (format JSON) décrivant la tâche."""
     e = {"url": t.url, "folder": t.folder, "parts": t.parts, "name": t.name, "headers": t.headers,
          "added": datetime.fromtimestamp(t.added).isoformat(timespec="seconds"),
-         "want": "stop" if t.finished else t.want}     # un fichier terminé puis déplacé n'est pas repris
+         "want": "stop" if t.finished else t.want,     # un fichier terminé puis déplacé n'est pas repris
+         # avancement retenu : sans lui, un fichier déplacé revenait « en attente », taille inconnue
+         "finished": t.finished, "size": t.size, "done": t.done}
     if t.limit_kbps:
         e["limit_kbps"] = t.limit_kbps
     if isinstance(t, VideoDownload):
@@ -852,6 +859,16 @@ def task_from_entry(e):
                           e.get("fmt"), e.get("stem"))
     else:
         t = Download(e["url"], e["folder"], e.get("parts", 8), e.get("name"), e.get("headers"))
+    if e.get("finished") and t.status != "Terminé":
+        # le fichier n'est plus à sa place : la tâche reste terminée, et le dira
+        t.status = "Terminé"
+        total = next((n for n in (e.get("size"), e.get("done")) if isinstance(n, int) and n > 0), None)
+        if total:
+            t.size = total
+            if isinstance(t, VideoDownload):
+                t.done = total
+            else:
+                t.segments = [[0, total - 1, total]]
     want = e.get("want")
     t.want = "now" if want in ("now", "force") else ("later" if want == "later" else "stop")
     limit = e.get("limit_kbps")

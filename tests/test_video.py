@@ -400,6 +400,21 @@ class VideoCookiesTest(unittest.TestCase):
                                 "Le Jeu de pouvoir (2).mp4"])
 
 
+    def test_video_terminee_dont_le_fichier_a_bouge(self):
+        from pydm.engine import entry_from_task, task_from_entry
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "Film.mp4"), "wb") as f:
+                f.write(b"x" * 2048)
+            d = VideoDownload("https://vimeo.com/1", tmp, name="Film.mp4")
+            d.size = d.done = 2048
+            self.assertEqual(d.status, "Terminé")
+            e = entry_from_task(d)
+            os.remove(os.path.join(tmp, "Film.mp4"))
+            t = task_from_entry(e)
+            self.assertEqual((t.status, t.size, t.done), ("Terminé", 2048, 2048))
+            self.assertTrue(t.missing)
+
+
 class AttemptsTest(unittest.TestCase):
     def test_ytdlp_attempts_sans_cookies(self):
         self.assertEqual(list(ytdlp_attempts("https://a.fr/v", {"User-Agent": "x"}, "Aucun")), [{}])

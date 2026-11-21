@@ -225,3 +225,20 @@ class TailleApproximativeTest(unittest.TestCase):
         textes = [model.data(model.index(r, 1)) for r in range(2)]
         self.assertFalse(textes[0].startswith("≈"), textes[0])
         self.assertTrue(textes[1].startswith("≈ "), textes[1])
+
+
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class FichierDeplaceTest(unittest.TestCase):
+    """Terminé puis déplacé : la ligne reste à 100 %, et dit où en est le fichier."""
+
+    def test_colonne_statut(self):
+        from pydm.gui.model import DownloadModel
+        fini = FakeTask(name="film.mp4", size=2048, done=2048, status="Terminé")
+        bouge = FakeTask(name="parti.mp4", size=2048, done=2048, status="Terminé")
+        bouge.missing = True
+        model = DownloadModel()
+        model.add(fini)
+        model.add(bouge)
+        statuts = [model.data(model.index(r, 5)) for r in range(2)]
+        self.assertEqual(statuts, ["Terminé", "Terminé · fichier déplacé"])
+        self.assertEqual([model.data(model.index(r, 2)) for r in range(2)], ["100 %", "100 %"])
