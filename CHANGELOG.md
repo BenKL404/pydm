@@ -7,6 +7,17 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Videos: yt-dlp wrote its fragments and `.part` files straight into the
+  download folder, which became unusable for the whole download — hundreds of
+  temporary files appearing and disappearing. They now go to a hidden
+  `.pydm-temp` folder beside the destination, on the same disk, removed once
+  nothing is left to resume.
+- Videos: the progress and the announced size no longer jump back when yt-dlp
+  moves from the video stream to the audio one. Both streams are now counted
+  together, and the announced size never shrinks.
+
 ## [1.8.1] - 2026-11-21
 
 ### Changed

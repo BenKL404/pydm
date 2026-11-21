@@ -532,8 +532,24 @@ class VideoDownload(_Task):
         self.stop_evt = threading.Event()
         self._rate_lock = threading.Lock()
         self._last_bytes = self._last_file = None
+        self._before = 0            # octets des flux déjà terminés (vidéo puis audio…)
         self.status = "Terminé" if name and os.path.exists(self.path) else (
             "En pause" if name else "En attente")
+
+    def temp_dir(self):
+        """Dossier des fichiers intermédiaires : caché, et sur le même disque que la destination.
+
+        yt-dlp écrivait ses fragments et ses .part à côté du fichier final : pendant un
+        téléchargement, le dossier devenait inutilisable.
+        """
+        return os.path.join(self.folder, ".pydm-temp")
+
+    def clean_temp(self):
+        """Supprime le dossier intermédiaire s'il ne reste rien dedans."""
+        try:
+            os.rmdir(self.temp_dir())
+        except OSError:
+            pass
 
     def _safe_stem(self):
         """Nom choisi, tronqué à 150 octets puis rendu valide ("" : nom donné par yt-dlp)."""
@@ -555,10 +571,11 @@ class VideoDownload(_Task):
             base, own = os.path.join(self.folder, self._safe_stem()), []
         else:
             return []
-        b = glob.escape(base)
+        bases = [glob.escape(base), glob.escape(os.path.join(self.temp_dir(), os.path.basename(base)))]
         found = set(own)
-        for pattern in (".f[0-9]*", ".*.part", ".*.ytdl", ".temp.*", ".*.part-Frag*"):
-            found.update(glob.glob(b + pattern))
+        for b in bases:
+            for pattern in ("", ".f[0-9]*", ".*.part", ".*.ytdl", ".temp.*", ".*.part-Frag*"):
+                found.update(glob.glob(b + pattern))
         return sorted(p for p in found if os.path.isfile(p))
 
     def _hook(self, d):
@@ -572,14 +589,19 @@ class VideoDownload(_Task):
             with self._rate_lock:       # yt-dlp appelle le hook depuis plusieurs threads
                 if self._last_bytes is None or d.get("filename") != self._last_file:
                     # début (déjà sur le disque en cas de reprise) ou fichier suivant : rien à freiner
+                    if self._last_bytes is not None:
+                        self._before += self._last_bytes        # flux précédent : acquis
                     self._last_file, self._last_bytes, delta = d.get("filename"), got, 0
                 else:                   # les fragments peuvent arriver dans le désordre
                     delta = got - self._last_bytes
                     self._last_bytes = max(self._last_bytes, got)
             if delta > 0:
                 self._throttle(delta)
-            self.done = got
-            self.size = d.get("total_bytes") or d.get("total_bytes_estimate") or self.size
+            # cumul des flux : sans lui, passer de la vidéo à l'audio renvoyait la barre à zéro
+            self.done = self._before + got
+            total = d.get("total_bytes") or d.get("total_bytes_estimate")
+            if total:
+                self.size = max(self.size or 0, self._before + total)
             self.speed = d.get("speed") or 0.0
             if d.get("fragment_count"):
                 self.status = f"Téléchargement ({d.get('fragment_index') or 0}/{d['fragment_count']} fragments)"
@@ -595,7 +617,7 @@ class VideoDownload(_Task):
             self.error = "yt-dlp absent (relancez install.sh)"
             self.status = f"Erreur : {self.error}"
             return
-        self._last_bytes = None             # premier relevé = point de départ (reprise)
+        self._last_bytes, self._before = None, 0    # premier relevé = point de départ (reprise)
         self.status = "Analyse…"
         ffmpeg = shutil.which("ffmpeg")
         audio = self.quality == "Audio MP3"
@@ -614,6 +636,7 @@ class VideoDownload(_Task):
             "concurrent_fragment_downloads": self.parts,
             "continuedl": True,
             "noplaylist": True,
+            "paths": {"home": self.folder, "temp": self.temp_dir()},
             "retries": 10,
             "fragment_retries": 10,
             # un fragment manquant laisserait un fichier troué sans aucune erreur visible
@@ -628,7 +651,7 @@ class VideoDownload(_Task):
                                        "preferredquality": "0"}]
         opts["http_headers"] = {k: v for k, v in self.headers.items() if k != "Cookie"}
         try:
-            os.makedirs(self.folder, exist_ok=True)
+            os.makedirs(self.temp_dir(), exist_ok=True)         # crée aussi le dossier de destination
         except OSError as e:
             self.error = str(e)
             self.status = f"Erreur : {e}"
@@ -658,6 +681,7 @@ class VideoDownload(_Task):
                     self.speed = 0.0
         finally:
             attempts.close()        # supprime le fichier de cookies éventuel
+            self.clean_temp()       # le dossier caché disparaît s'il ne reste rien à reprendre
         msg = re.sub(r"\x1b\[[0-9;]*m", "", str(first_error)).replace("ERROR: ", "").strip()
         if "DRM" in msg:
             msg = "contenu protégé par DRM, téléchargement impossible"

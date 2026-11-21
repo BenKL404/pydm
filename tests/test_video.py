@@ -251,6 +251,62 @@ class VideoCookiesTest(unittest.TestCase):
         self.assertEqual([sleep(1), sleep(4), sleep(9)], [2, 16, 30])
 
 
+    def test_fichiers_temporaires_a_l_ecart(self):
+        """Fragments et .part ne doivent pas encombrer le dossier de téléchargement."""
+        d, calls = self.run_video("https://exemple.fr/master.m3u8", {})
+        chemins = calls[0]["opts"]["paths"]
+        self.assertEqual(chemins["home"], d.folder)
+        self.assertEqual(os.path.dirname(chemins["temp"]), d.folder)
+        self.assertTrue(os.path.basename(chemins["temp"]).startswith("."), chemins["temp"])
+
+    def test_dossier_temporaire_nettoye(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = VideoDownload("https://vimeo.com/1", tmp)
+            reste = d.temp_dir()
+            os.makedirs(reste, exist_ok=True)
+            d.clean_temp()
+            self.assertFalse(os.path.exists(reste), "dossier vide : à supprimer")
+            os.makedirs(reste, exist_ok=True)
+            open(os.path.join(reste, "Clip.mp4.part"), "w").close()
+            d.clean_temp()
+            self.assertTrue(os.path.exists(reste), "des restes : on ne jette rien")
+
+    def test_fichiers_intermediaires_du_dossier_temporaire(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = VideoDownload("https://vimeo.com/1", tmp, name="Clip.mp4")
+            os.makedirs(d.temp_dir(), exist_ok=True)
+            cache = os.path.join(d.temp_dir(), "Clip.f137.mp4.part")
+            open(cache, "w").close()
+            open(os.path.join(tmp, "Clip.mp4"), "w").close()
+            self.assertIn(cache, d.files())
+
+    def test_dossier_temporaire_supprime_apres_coup(self):
+        """Rien ne doit rester dans le dossier de destination une fois la vidéo récupérée."""
+        FakeYoutubeDL.calls = []
+        FakeYoutubeDL.refuse = staticmethod(lambda opts: None)
+        fake = types.SimpleNamespace(YoutubeDL=FakeYoutubeDL)
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(sys.modules, {"yt_dlp": fake}):
+            d = VideoDownload("https://vimeo.com/1", tmp)
+            d.start()
+            d.wait(10)
+            self.assertEqual(d.status, "Terminé", d.status)
+            self.assertEqual(os.listdir(tmp), [], "le dossier doit être propre")
+
+    def test_progression_sans_retour_en_arriere(self):
+        """Vidéo puis audio : le compteur ne doit pas repartir de zéro à chaque flux."""
+        d = VideoDownload("https://vimeo.com/1", "/tmp")
+        vus = []
+        with mock.patch("pydm.engine.LIMITER"):
+            for nom, got, total in (("v.mp4", 1_000_000, 4_000_000), ("v.mp4", 4_000_000, 4_000_000),
+                                    ("a.m4a", 100_000, 500_000), ("a.m4a", 500_000, 500_000)):
+                d._hook({"status": "downloading", "downloaded_bytes": got,
+                         "total_bytes": total, "filename": nom})
+                vus.append((d.done, d.size))
+        self.assertEqual([x[0] for x in vus], sorted(x[0] for x in vus), "progression en arrière")
+        self.assertEqual([x[1] for x in vus], sorted(x[1] for x in vus), "taille annoncée en baisse")
+        self.assertEqual(vus[-1], (4_500_000, 4_500_000))
+
+
 class AttemptsTest(unittest.TestCase):
     def test_ytdlp_attempts_sans_cookies(self):
         self.assertEqual(list(ytdlp_attempts("https://a.fr/v", {"User-Agent": "x"}, "Aucun")), [{}])
