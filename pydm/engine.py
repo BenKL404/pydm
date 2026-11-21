@@ -7,6 +7,7 @@ import os
 import random
 import re
 import shutil
+import statistics
 import tempfile
 import threading
 import time
@@ -27,6 +28,8 @@ CHUNK = 64 * 1024
 MIN_SPLIT = 2 * 1024 * 1024
 MAX_RETRIES = 6
 SIZE_DRIFT = 0.15       # écart à partir duquel la taille affichée est corrigée
+SIZE_WINDOW = 25        # fragments gardés pour mesurer la cadence (les premiers sont plus lourds)
+SIZE_SAMPLE = 8         # relevés minimum avant d'oser une estimation
 UA = default_ua()       # UA de repli ; par requête, voir fingerprint.pinned_ua
 _NAMES = threading.Lock()     # choix du nom + création du .part : atomique entre téléchargements
 QUALITIES = {
@@ -565,7 +568,7 @@ class VideoDownload(_Task):
         self._rate_lock = threading.Lock()
         self._last_bytes = self._last_file = None
         self._before = 0            # octets des flux déjà terminés (vidéo puis audio…)
-        self._anchor = None         # (fragment, octets) de départ pour estimer la taille
+        self._samples = []          # (fragment, octets) récents, pour estimer la taille
         self.status = "Terminé" if name and os.path.exists(self.path) else (
             "En pause" if name else "En attente")
 
@@ -631,7 +634,7 @@ class VideoDownload(_Task):
                     if self._last_bytes is not None:
                         self._before += self._last_bytes        # flux précédent : acquis
                     self._last_file, self._last_bytes, delta = d.get("filename"), got, 0
-                    self._anchor = None                         # autre flux : autre cadence
+                    self._samples = []                          # autre flux : autre cadence
                 else:                   # les fragments peuvent arriver dans le désordre
                     delta = got - self._last_bytes
                     self._last_bytes = max(self._last_bytes, got)
@@ -669,22 +672,23 @@ class VideoDownload(_Task):
             self.size = self.done
 
     def _from_fragments(self, got, index, count):
-        """Taille extrapolée sur les fragments reçus, ou None tant qu'on n'en sait pas assez.
+        """Taille extrapolée sur la cadence **récente**, ou None tant qu'on n'en sait pas assez.
 
-        Le fragment d'amorce pèse souvent plusieurs fois la moyenne : extrapoler bêtement
-        « reçu × total / rang » surestimait d'un bon tiers. On mesure donc la **pente** depuis
-        le premier relevé, ce qui laisse l'amorce en dehors du calcul.
+        Les premiers fragments d'un flux pèsent souvent le double des suivants : les garder
+        dans la moyenne annonçait 3,6 Go pour un fichier de 2. On ne mesure donc la cadence
+        que sur les derniers fragments, et on attend d'en avoir assez avant d'annoncer quoi
+        que ce soit — un chiffre tiré de deux relevés ne vaut rien.
         """
-        if self._anchor is None or index <= self._anchor[0]:
-            self._anchor = (index, got)
-        i0, g0 = self._anchor
-        if index > i0:
-            par_fragment = (got - g0) / (index - i0)
-            total = got + par_fragment * max(0, count - index)
-        elif index >= 3:
-            total = got * count / index         # pas encore deux relevés : estimation grossière
-        else:
+        if self._samples and index <= self._samples[-1][0]:
+            return None                         # fragments dans le désordre : relevé inutilisable
+        self._samples.append((index, got))
+        while len(self._samples) > 2 and index - self._samples[0][0] > SIZE_WINDOW:
+            self._samples.pop(0)
+        if len(self._samples) < SIZE_SAMPLE:
             return None
+        # médiane plutôt que moyenne : quelques fragments hors norme ne doivent pas tout fausser
+        poids = [(b - a) / (j - i) for (i, a), (j, b) in zip(self._samples, self._samples[1:])]
+        total = got + statistics.median(poids) * max(0, count - index)
         return max(int(total), got)             # jamais moins que ce qui est déjà sur le disque
 
     def _run(self):
@@ -694,7 +698,7 @@ class VideoDownload(_Task):
             self.error = "yt-dlp absent (relancez install.sh)"
             self.status = f"Erreur : {self.error}"
             return
-        self._last_bytes, self._before, self._anchor = None, 0, None   # premier relevé : départ
+        self._last_bytes, self._before, self._samples = None, 0, []    # premier relevé : départ
         self.status = "Analyse…"
         ffmpeg = shutil.which("ffmpeg")
         audio = self.quality == "Audio MP3"
