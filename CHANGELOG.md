@@ -7,6 +7,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-11-21
+
 ### Added
 
 - Already downloaded: adding a link PyDM has already taken now says so — with
@@ -17,6 +19,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
   the first frame of the stream is grabbed with ffmpeg and shown in its place.
   It is taken a couple of seconds in, since videos often open on black, and
   falls back to frame zero for very short streams.
+- The badge's shape is a setting in the extension's popup: the full bar
+  (default), a circle that expands on hover, or a circle alone.
 
 ### Changed
 
@@ -30,36 +34,29 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - The badge is now a rectangle rather than a pill, reads "Télécharger la
   vidéo", and sits flush against the video: just above its top-right corner, or
   inside that corner when the video touches the top of the window or lives in
-  an embedded frame, where there is no room above it. Its shape is a setting:
-  the full bar, a circle that expands on hover, or a circle alone.
+  an embedded frame, where there is no room above it.
 - The extension popup was redesigned: no wrapped button labels, settings
   aligned on their first line with a hint below, and a status dot instead of a
   check mark.
 - The toolbar's menu button now carries a gear rather than the sliders icon,
   which read as filters.
+- Sizes are shown plainly, with no "≈" marker, in the list and in the add
+  dialog alike.
 
 ### Fixed
 
-- The estimated size of a fragmented stream is read from the recent pace, as
-  the median weight of the last 25 fragments, and nothing is announced before
-  eight readings. A real download — 604 fragments, the first fifteen twice as
-  heavy as the rest — was announcing 3.6 GB for a 1.9 GB file all the way
-  through; it now settles on the right figure at 4 % progress.
-- Estimated sizes are shown plainly, with no "≈" marker — neither in the
-  download list nor in the add dialog's quality labels.
+- The announced size of a fragmented stream was wildly off — 3.6 GB shown for a
+  1.85 GB film, all the way through. The opening fragments weigh twice the
+  rest, and averaging over the whole history carried that weight to the end.
+  The size is now read from the recent pace, as the median weight of the last
+  25 fragments, and nothing is announced before eight readings. On that same
+  download it settles on the right figure at 4 % progress.
 - The displayed size holds still: a number that shifts with every fragment
   looks like a download going wrong. It is only corrected when the estimate
   drifts more than 15 % away from it, so a typical download shows one figure
-  from the queue to the end — two at most.
-- The size shown in the add dialog now follows the download instead of being
-  thrown away: a queued task shows it straight away rather than "?", and a size
-  the site states exactly is never replaced by an estimate.
-- The estimated size of a fragmented stream was a third too high in the middle
-  of a download — 478 MB announced for a 400 MB file. The opening fragment
-  weighs several times the average, and extrapolating "received × total ÷
-  rank" carried that weight all the way. The estimate now follows the slope
-  measured since the first reading, which leaves the opening fragment out of
-  the calculation, and it never drops below what is already on disk.
+  from the queue to the end — two at most. The size shown in the add dialog is
+  carried over to the task, so a queued download no longer shows "?", and a
+  size the site states exactly is never replaced by an estimate.
 - Video temporary files really do leave the download folder now: yt-dlp ignores
   the `paths` setting when the output template is an absolute path, so the
   previous attempt changed nothing and fragments kept landing among the user's
@@ -351,7 +348,8 @@ First public version.
   interception, video button, context menu, cookie and referrer forwarding.
 - Native messaging host and per-user installer.
 
-[Unreleased]: https://github.com/BenKL404/pydm/compare/v1.8.3...HEAD
+[Unreleased]: https://github.com/BenKL404/pydm/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/BenKL404/pydm/compare/v1.8.3...v1.9.0
 [1.8.3]: https://github.com/BenKL404/pydm/compare/v1.8.2...v1.8.3
 [1.8.2]: https://github.com/BenKL404/pydm/compare/v1.8.1...v1.8.2
 [1.8.1]: https://github.com/BenKL404/pydm/compare/v1.8.0...v1.8.1
