@@ -7,6 +7,19 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The download badge now sits above the video aligned on its **right** edge
+  rather than its left one, and is pushed back inside the window when the
+  video is too narrow or too close to an edge.
+- It reads "Télécharger la vidéo", the way IDM's panel does.
+
+### Added
+
+- Badge shape is now a setting, in the extension's popup: the full bar
+  (default), a circle that expands on hover, or a circle alone. The change
+  applies immediately, without reloading the page.
+
 ## [1.8.0] - 2026-11-20
 
 ### Changed

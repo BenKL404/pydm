@@ -75,16 +75,28 @@ class PlacementTest(unittest.TestCase):
     def test_au_dessus_de_la_video_par_defaut(self):
         """Comme IDM : hors de la vidéo, donc hors d'atteinte des commandes du lecteur."""
         at, width, size = self.pick(PLEINE)
-        self.assertEqual((at["corner"], at["align"]), ("above", "flex-start"))
+        self.assertEqual((at["corner"], at["align"]), ("above", "flex-end"))
         gauche, haut, droite, bas = self.carre(at, width, size)
         self.assertLessEqual(bas, PLEINE["top"], "la pastille mord sur la vidéo")
-        self.assertEqual([gauche, droite], [100, 134], "alignée sur le bord gauche de la vidéo")
+        self.assertEqual([gauche, droite], [866, 900], "alignée sur le bord droit de la vidéo")
         self.assertGreaterEqual(haut, 0, "sortie par le haut de la fenêtre")
+        self.assertEqual(at["left"] + width, PLEINE["right"], "le bord droit doit coïncider")
+
+    def test_pastille_longue_reste_dans_la_fenetre_a_gauche(self):
+        """Vidéo étroite collée au bord gauche : la version longue ne sort pas par la gauche."""
+        bord = {"left": 0, "top": 200, "right": 200, "bottom": 600}
+        got, width, size = self.run_js("""
+          console.log(JSON.stringify(anchor(%s, %s, "above")));
+        """ % (json.dumps(bord), json.dumps(VIEW)))
+        self.assertEqual(got["left"], 0)
+        gauche, _, droite, _ = self.carre(got, width, size)
+        self.assertGreaterEqual(gauche, 0)
+        self.assertLessEqual(droite, VIEW["width"])
 
     def test_sans_place_au_dessus_on_rentre_dans_la_video(self):
         colle_en_haut = {"left": 100, "top": 20, "right": 900, "bottom": 550}
         at, _, _ = self.pick(colle_en_haut)
-        self.assertEqual((at["corner"], at["align"]), ("tl", "flex-start"))
+        self.assertEqual((at["corner"], at["align"]), ("tl", "flex-start"))      # repli : coins intérieurs
 
     def test_au_dessus_occupe_on_rentre_dans_la_video(self):
         at, _, _ = self.pick(PLEINE, occupes=["above"])
@@ -122,12 +134,27 @@ class PlacementTest(unittest.TestCase):
         """ % (json.dumps(PLEINE), json.dumps(VIEW)))
         self.assertEqual(got, {"dessus": True, "juste_a_cote": True, "loin": False})
 
-    def test_toujours_en_version_longue(self):
-        """Plus de petit rond : le libellé est lisible sans survol."""
+    def test_libelle_et_styles_de_bouton(self):
+        """Libellé à la IDM, version longue par défaut, repli réservé au style « survol »."""
         src = open(os.path.join(ROOT, "extension", "content.js")).read()
+        self.assertIn('const LABEL = "Télécharger la vidéo"', src)
         self.assertIn('<span class="label">', src)
-        self.assertNotIn("max-width: 0", src)
-        self.assertNotIn("opacity: 0", src)
+        for ligne in src.splitlines():
+            if "max-width: 0" in ligne or "opacity: 0" in ligne:
+                self.assertIn(":host(.survol)", ligne, "le repli ne doit toucher que le style survol")
+        self.assertIn(":host(.rond) .label { display: none; }", src)
+
+    def test_choix_du_style_dans_la_fenetre(self):
+        """Les trois formes proposées doivent exister des deux côtés."""
+        html = open(os.path.join(ROOT, "extension", "popup.html")).read()
+        js = open(os.path.join(ROOT, "extension", "popup.js")).read()
+        content = open(os.path.join(ROOT, "extension", "content.js")).read()
+        for valeur in ("long", "survol", "rond"):
+            self.assertIn('value="%s"' % valeur, html)
+        self.assertIn('id="videoStyle"', html)
+        self.assertIn("videoStyle: e.target.value", js)
+        self.assertIn('s.videoStyle || "long"', js)
+        self.assertIn("c.videoStyle", content)      # changement pris en compte sans recharger la page
 
     def test_pastille_longue_reste_dans_la_fenetre(self):
         """Vidéo collée au bord droit : la version longue ne doit pas sortir de l'écran."""

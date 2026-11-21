@@ -5,14 +5,24 @@
   const api = globalThis.browser ?? chrome;
   let enabled = true;
   let host, button, label, current, hideTimer, resetTimer, lastScan = 0, hovered = false, queued = false;
+  let style = "long";     // long | survol | rond (réglé dans la fenêtre de l'extension)
   let found = [], scanned = 0, taken = null, placed = null;
 
-  api.storage.local.get("videoButton").then((s) => { enabled = s.videoButton !== false; });
+  function dress() {
+    if (host) host.className = style === "long" ? "" : style;
+  }
+
+  api.storage.local.get(["videoButton", "videoStyle"]).then((s) => {
+    enabled = s.videoButton !== false;
+    style = s.videoStyle || "long";
+    dress();
+  });
   api.storage.onChanged.addListener((c) => {
     if (c.videoButton) { enabled = c.videoButton.newValue !== false; if (!enabled) hide(); }
+    if (c.videoStyle) { style = c.videoStyle.newValue || "long"; dress(); }
   });
 
-  const LABEL = "Télécharger avec PyDM";
+  const LABEL = "Télécharger la vidéo";
   const WIDTH = 240;
   const SIZE = 34;        // pastille repliée : carré de 34 px (cf. la feuille de style)
   const INSET = 10;
@@ -35,9 +45,10 @@
     if (corner === "above") {
       const by = top - inset - size;
       if (by < 0) return null;              // vidéo collée au haut de la fenêtre : pas de place
-      // version longue : on la garde entière dans la fenêtre, quitte à décaler vers la gauche
-      const bx = Math.max(0, Math.min(left, view.width - width));
-      return { corner, align: "flex-start", left: bx, top: by, cx: bx + size / 2, cy: by + size / 2 };
+      // alignée sur le bord droit de la vidéo, sans jamais sortir de la fenêtre
+      const bx = Math.max(0, Math.min(right - width, view.width - width));
+      return { corner, align: "flex-end", left: bx, top: by,
+               cx: bx + width - size / 2, cy: by + size / 2 };
     }
     const toLeft = corner[1] === "l", toTop = corner[0] === "t";
     const bx = toLeft ? left + inset : right - inset - size;    // bord gauche de la pastille
@@ -98,8 +109,19 @@
                  -webkit-backdrop-filter: blur(10px) saturate(140%); backdrop-filter: blur(10px) saturate(140%);
                  box-shadow: 0 4px 16px rgba(0, 0, 0, .35);
                  transition: background .2s, border-color .2s; }
-        /* libellé toujours lu : la pastille ne se replie plus en pastille ronde */
+        /* « long » (défaut) : le libellé est lu sans survol */
         .label { max-width: 220px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+        /* « rond » : l'icône seule ; « survol » : un rond qui s'allonge quand on le vise */
+        :host(.rond) button, :host(.survol) button { gap: 0; padding: 0 6px; }
+        :host(.rond) .label { display: none; }
+        :host(.survol) button { transition: gap .2s ease, padding .2s ease, background .2s, border-color .2s; }
+        :host(.survol) .label { max-width: 0; opacity: 0; transition: max-width .25s ease, opacity .2s ease; }
+        :host(.survol) button:hover, :host(.survol) button:focus-visible,
+        :host(.survol) button.busy, :host(.survol) button.ok, :host(.survol) button.err {
+                 gap: 8px; padding: 0 14px 0 6px; }
+        :host(.survol) button:hover .label, :host(.survol) button:focus-visible .label,
+        :host(.survol) .busy .label, :host(.survol) .ok .label, :host(.survol) .err .label {
+                 max-width: 220px; opacity: 1; }
         button:hover { background: rgba(15, 23, 42, .94); border-color: rgba(34, 211, 238, .55); }
         button:focus-visible { outline: 2px solid #22d3ee; outline-offset: 2px; }
         svg { width: 22px; height: 22px; flex: none; }
@@ -121,6 +143,7 @@
         </svg>
         <span class="label">${LABEL}</span>
       </button>`;
+    dress();
     button = root.querySelector("button");
     label = root.querySelector(".label");
     button.addEventListener("click", onClick);
