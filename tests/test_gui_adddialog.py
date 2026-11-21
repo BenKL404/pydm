@@ -20,7 +20,7 @@ CHOICES = [choice("1080p · MP4 · 392.9 Mo", "137+140", "mp4", 1080),
 def result(**kw):
     r = dict(kind="video", name="Conférence.mp4", size=None, resumable=True, site="youtube.com",
              title="Conférence", duration=2538, thumbnail=None, choices=CHOICES, selected=1,
-             ffmpeg_missing=False, error=None, drm=False)
+             ffmpeg_missing=False, error=None, drm=False, stream=None)
     r.update(kw)
     return r
 
@@ -44,8 +44,8 @@ class DialogCase(unittest.TestCase):
         self.settings = dict(store.DEFAULTS, folder=self.cfg)
         self.emitted = []
 
-    def dialog(self, res=None, urls=("https://www.youtube.com/watch?v=x",), analyzer=None):
-        dlg = self.AddDialog(self.settings, list(urls), analyzer=analyzer or (lambda *a, **k: res))
+    def dialog(self, res=None, urls=("https://www.youtube.com/watch?v=x",), analyzer=None, **kw):
+        dlg = self.AddDialog(self.settings, list(urls), analyzer=analyzer or (lambda *a, **k: res), **kw)
         dlg.accepted_tasks.connect(lambda tasks, start: self.emitted.append((tasks, start)))
         self.addCleanup(dlg.deleteLater)
         dlg.show()
@@ -368,3 +368,49 @@ class DialogArtTest(DialogCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+JPEG = (b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xdb\x00C\x00"
+        + bytes(64) + b"\xff\xc9\x00\x0b\x08\x00\x01\x00\x01\x01\x01\x11\x00"
+        + b"\xff\xcc\x00\x06\x00\x10\x10\x05\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xd2\xcf \xff\xd9")
+
+
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
+class PremiereImageTest(DialogCase):
+    """Sans miniature, la fenêtre va chercher la première image du flux."""
+
+    def test_image_demandee_et_affichee(self):
+        vus = []
+
+        def fetcher(stream, headers):
+            vus.append((stream, headers))
+            return JPEG
+        dlg = self.dialog(result(stream="https://a.fr/v.m3u8"), frame_fetcher=fetcher)
+        self.wait_filled(dlg)
+        end = time.time() + 2
+        while time.time() < end and not dlg.has_thumb:
+            dlg.poll()
+            time.sleep(0.01)
+        self.assertEqual([s for s, _ in vus], ["https://a.fr/v.m3u8"])
+        self.assertTrue(dlg.has_thumb, "la première image n'a pas été affichée")
+
+    def test_pas_demandee_s_il_y_a_deja_une_miniature(self):
+        vus = []
+        dlg = self.dialog(result(stream="https://a.fr/v.m3u8", thumbnail=JPEG),
+                          frame_fetcher=lambda *a: vus.append(a))
+        self.wait_filled(dlg)
+        self.assertEqual(vus, [])
+
+    def test_pas_demandee_sans_flux(self):
+        vus = []
+        dlg = self.dialog(result(), frame_fetcher=lambda *a: vus.append(a))
+        self.wait_filled(dlg)
+        self.assertEqual(vus, [])
+
+    def test_une_seule_demande(self):
+        vus = []
+        dlg = self.dialog(result(stream="https://a.fr/v.m3u8"), frame_fetcher=lambda *a: vus.append(a) or None)
+        self.wait_filled(dlg)
+        for _ in range(5):
+            dlg._show_single(result(stream="https://a.fr/v.m3u8"))
+        self.assertEqual(len(vus), 1, "ffmpeg ne doit être lancé qu'une fois")

@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog,
                                QTableWidgetItem, QToolButton, QVBoxLayout, QWidget)
 
 from .. import store
-from ..analyze import THUMB_MAX, analyze
+from ..analyze import THUMB_MAX, analyze, first_frame
 from ..cache import video_key
 from ..engine import UA, better_name
 from ..engine import QUALITIES
@@ -44,7 +44,7 @@ class AddDialog(QDialog):
     accepted_tasks = Signal(list, bool)     # entrées à créer, démarrer (Télécharger) ou non (Plus tard)
 
     def __init__(self, settings, urls, headers=None, filename=None, kind="auto", parent=None,
-                 analyzer=analyze, title=None, thumb_fetcher=None):
+                 analyzer=analyze, title=None, thumb_fetcher=None, frame_fetcher=None):
         super().__init__(parent)
         self.setAttribute(Qt.WA_DeleteOnClose)
         self.setWindowIcon(theme.logo())
@@ -54,6 +54,8 @@ class AddDialog(QDialog):
         self.results_q = queue.Queue()      # (index, résultat) issus des threads d'analyse
         self.thumb_q = queue.Queue()        # miniature YouTube chargée sans attendre l'analyse
         self.has_thumb = False
+        self.frame_fetcher = frame_fetcher or first_frame
+        self._frame_asked = False           # première image demandée à ffmpeg (une seule fois)
         self.thumb_art = None               # illustration montrée à la place de la miniature (erreur, DRM)
         self.page_title = title
         self.closed = False
@@ -235,7 +237,17 @@ class AddDialog(QDialog):
         else:
             self._show_single(r)
 
+    def _ask_frame(self, r):
+        """Aucune miniature : beaucoup de sites n'en ont pas. On prend la première image du flux."""
+        if self.has_thumb or self._frame_asked or r.get("thumbnail") or not r.get("stream"):
+            return
+        self._frame_asked = True
+        stream, headers = r["stream"], dict(self.headers or {})
+        threading.Thread(target=lambda: self.thumb_q.put(self.frame_fetcher(stream, headers)),
+                         daemon=True).start()
+
     def _show_single(self, r):
+        self._ask_frame(r)
         muted = theme.colors()["muted"]
         if r["kind"] == "error":
             self.info_label.setText(breakable(r["error"]))

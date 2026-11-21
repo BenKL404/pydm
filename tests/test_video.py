@@ -14,6 +14,7 @@ class FakeYoutubeDL:
     """Imite yt_dlp.YoutubeDL : enregistre chaque essai ; `refuse` simule les échecs."""
     calls = []
     refuse = staticmethod(lambda opts: None)     # renvoie un message d'erreur pour faire échouer l'essai
+    creates = False                              # écrit vraiment le fichier de sortie (noms uniques)
 
     def __init__(self, opts):
         self.opts = opts
@@ -34,6 +35,11 @@ class FakeYoutubeDL:
         error = FakeYoutubeDL.refuse(self.opts)
         if error:
             raise Exception(error)
+        if FakeYoutubeDL.creates:
+            path = self.opts["outtmpl"].replace("%(ext)s", "mp4")
+            with open(path, "w") as f:
+                f.write("video")
+            return {"requested_downloads": [{"filepath": path}]}
         return {}
 
 
@@ -374,6 +380,24 @@ class VideoCookiesTest(unittest.TestCase):
         _, calls = self.run_video("https://exemple.fr/master.m3u8", {}, title="Titre de page",
                                   stem="Mon nom")
         self.assertTrue(os.path.basename(calls[0]["opts"]["outtmpl"]).startswith("Mon nom."))
+
+
+    def test_numerotation_dans_l_ordre_de_demarrage(self):
+        """Les (1), (2), (3) doivent suivre l'ordre où les téléchargements ont commencé."""
+        FakeYoutubeDL.calls, FakeYoutubeDL.creates = [], True
+        FakeYoutubeDL.refuse = staticmethod(lambda opts: None)
+        self.addCleanup(setattr, FakeYoutubeDL, "creates", False)
+        fake = types.SimpleNamespace(YoutubeDL=FakeYoutubeDL)
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(sys.modules, {"yt_dlp": fake}):
+            taches = [VideoDownload("https://exemple.fr/%d" % i, tmp, stem="Le Jeu de pouvoir")
+                      for i in range(3)]
+            for t in (taches[2], taches[0], taches[1]):      # démarrées dans le désordre
+                t.start()
+                t.wait(15)
+                self.assertEqual(t.status, "Terminé", t.error or t.status)
+            noms = [t.name for t in (taches[2], taches[0], taches[1])]
+        self.assertEqual(noms, ["Le Jeu de pouvoir.mp4", "Le Jeu de pouvoir (1).mp4",
+                                "Le Jeu de pouvoir (2).mp4"])
 
 
 class AttemptsTest(unittest.TestCase):

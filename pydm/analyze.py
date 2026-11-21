@@ -3,10 +3,12 @@
 """Analyse d'un lien avant téléchargement : nom, taille, et qualités disponibles d'une vidéo."""
 import re
 import shutil
+import subprocess
 import urllib.parse
 import urllib.request
 
 from .engine import UA, friendly_error, have_ytdlp, looks_like_video, probe, ytdlp_attempts
+from .filetypes import category
 from .signed import expiry_of
 from .util import human, safe_filename
 
@@ -21,7 +23,7 @@ def _clean(msg):
 def _result(**kw):
     r = dict(kind="error", name=None, size=None, resumable=False, site=None, title=None, duration=None,
              thumbnail=None, choices=[], selected=0, ffmpeg_missing=False, error=None, drm=False,
-             expires=None)
+             expires=None, stream=None)
     r.update(kw)
     return r
 
@@ -165,6 +167,40 @@ def _thumbnail(info):
     return data if len(data) <= THUMB_MAX else None
 
 
+def frame_args(exe, url, headers=None, at=2, width=320):
+    """Ligne de commande ffmpeg qui sort une image JPEG sur la sortie standard."""
+    args = [exe, "-v", "error", "-nostdin"]
+    blob = "".join(f"{k}: {v}\r\n" for k, v in (headers or {}).items() if k and v)
+    if blob:
+        args += ["-headers", blob]      # avant -i : ces en-têtes valent pour l'entrée
+    if at:
+        args += ["-ss", str(at)]
+    return args + ["-i", url, "-frames:v", "1", "-an", "-vf", f"scale={width}:-2",
+                   "-f", "image2", "-c:v", "mjpeg", "-q:v", "4", "-"]
+
+
+def first_frame(url, headers=None, ffmpeg=None, timeout=20, runner=None):
+    """Première image de la vidéo en JPEG, ou None : beaucoup de sites n'ont pas de miniature.
+
+    Deux essais : quelques secondes après le début (les vidéos commencent souvent sur du noir),
+    puis à l'image zéro si le flux est trop court pour qu'on y arrive.
+    """
+    exe = ffmpeg or shutil.which("ffmpeg")
+    if not exe or not url:
+        return None
+    run = runner or (lambda args: subprocess.run(args, stdout=subprocess.PIPE,
+                                                 stderr=subprocess.DEVNULL, timeout=timeout))
+    for at in (2, 0):
+        try:
+            out = run(frame_args(exe, url, headers, at))
+        except Exception:  # noqa: BLE001 - ffmpeg absent, flux illisible, délai dépassé
+            return None
+        data = getattr(out, "stdout", None)
+        if data and data[:2] == b"\xff\xd8" and len(data) <= THUMB_MAX:
+            return data
+    return None
+
+
 def _video(url, headers, browser, default_quality, ffmpeg):
     import yt_dlp
     opts = {"quiet": True, "no_warnings": True, "noplaylist": True, "skip_download": True,
@@ -188,10 +224,12 @@ def _video(url, headers, browser, default_quality, ffmpeg):
     sel = preselect(choices, default_quality)
     title = info.get("title") or url
     stem = safe_filename(title, fallback="video")
+    stream = info.get("url") or next((f.get("url") for f in reversed(info.get("formats") or [])
+                                      if f.get("url")), None)
     return _result(kind="video", name=f"{stem}.{choices[sel]['ext']}", size=choices[sel]["size"],
                    resumable=True, site=info.get("webpage_url_domain") or urllib.parse.urlparse(url).hostname,
                    title=title, duration=info.get("duration"), thumbnail=_thumbnail(info),
-                   choices=choices, selected=sel, ffmpeg_missing=missing)
+                   choices=choices, selected=sel, ffmpeg_missing=missing, stream=stream)
 
 
 def analyze(url, headers=None, browser="Aucun", kind="auto", default_quality="Meilleure", ffmpeg=None):
@@ -209,7 +247,8 @@ def _analyze(url, headers, browser, kind, default_quality, ffmpeg):
             return _video(url, headers, browser, default_quality, ffmpeg)
         size, ranges, name = probe(url, headers)
         return _result(kind="file", name=name, size=size, resumable=ranges,
-                       site=urllib.parse.urlparse(url).hostname)
+                       site=urllib.parse.urlparse(url).hostname,
+                       stream=url if category(name) == "video" else None)
     except Exception as e:  # noqa: BLE001
         msg = friendly_error(_clean(e) or "analyse impossible", url=url)
         return _result(kind="error", error=msg, drm="DRM" in msg)

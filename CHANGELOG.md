@@ -7,6 +7,13 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Add dialog: when a site offers no thumbnail — most embedded players do not —
+  the first frame of the stream is grabbed with ffmpeg and shown in its place.
+  It is taken a couple of seconds in, since videos often open on black, and
+  falls back to frame zero for very short streams.
+
 ### Changed
 
 - The download badge shows up on its own as soon as a video is visible, without

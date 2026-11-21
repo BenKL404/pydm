@@ -1,5 +1,7 @@
 import os
+import shutil
 import sys
+import tempfile
 import types
 import unittest
 from unittest import mock
@@ -194,3 +196,61 @@ class RealWorldChoicesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PremiereImageTest(unittest.TestCase):
+    """Beaucoup de sites ne donnent aucune miniature : on prend la première image du flux."""
+
+    def test_ligne_de_commande(self):
+        from pydm.analyze import frame_args
+        args = frame_args("ffmpeg", "https://a.fr/v.m3u8", {"Referer": "https://a.fr/p", "Cookie": "S=1"})
+        self.assertLess(args.index("-headers"), args.index("-i"), "en-têtes après -i : ignorés")
+        self.assertIn("Referer: https://a.fr/p\r\n", args[args.index("-headers") + 1])
+        self.assertEqual(args[args.index("-i") + 1], "https://a.fr/v.m3u8")
+        self.assertEqual(args[-1], "-")
+        self.assertIn("-frames:v", args)
+        sans = frame_args("ffmpeg", "https://a.fr/v.mp4", None, at=0)
+        self.assertNotIn("-headers", sans)
+        self.assertNotIn("-ss", sans)
+
+    def test_deux_essais_puis_abandon(self):
+        from pydm.analyze import first_frame
+        vus = []
+
+        class Sortie:
+            def __init__(self, data):
+                self.stdout = data
+        # rien à 2 s (flux trop court), une image à 0 s
+        def runner(args):
+            vus.append(args[args.index("-ss") + 1] if "-ss" in args else "0")
+            return Sortie(b"\xff\xd8ancre" if "-ss" not in args else b"")
+        self.assertEqual(first_frame("https://a.fr/v.mp4", ffmpeg="ffmpeg", runner=runner),
+                         b"\xff\xd8ancre")
+        self.assertEqual(vus, ["2", "0"])
+        self.assertIsNone(first_frame("https://a.fr/v.mp4", ffmpeg="ffmpeg",
+                                      runner=lambda a: Sortie(b"")))
+        self.assertIsNone(first_frame("https://a.fr/v.mp4", ffmpeg="ffmpeg",
+                                      runner=lambda a: Sortie(b"<html>pas une image")))
+
+    def test_sans_ffmpeg_ni_lien(self):
+        from pydm.analyze import first_frame
+        self.assertIsNone(first_frame("https://a.fr/v.mp4", ffmpeg=""))
+        self.assertIsNone(first_frame("", ffmpeg="ffmpeg"))
+
+    def test_erreur_de_ffmpeg_silencieuse(self):
+        from pydm.analyze import first_frame
+        def boum(args):
+            raise OSError("ffmpeg introuvable")
+        self.assertIsNone(first_frame("https://a.fr/v.mp4", ffmpeg="ffmpeg", runner=boum))
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg absent")
+    def test_vraie_image_d_une_vraie_video(self):
+        import subprocess as sp
+        from pydm.analyze import first_frame
+        with tempfile.TemporaryDirectory() as tmp:
+            video = os.path.join(tmp, "essai.mp4")
+            sp.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=320x180:rate=10",
+                    "-t", "4", "-pix_fmt", "yuv420p", video], check=True, timeout=60)
+            data = first_frame(video)
+        self.assertTrue(data and data[:2] == b"\xff\xd8", "JPEG attendu")
+        self.assertLess(len(data), 64 * 1024)
