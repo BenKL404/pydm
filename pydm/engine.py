@@ -561,6 +561,7 @@ class VideoDownload(_Task):
         self._rate_lock = threading.Lock()
         self._last_bytes = self._last_file = None
         self._before = 0            # octets des flux déjà terminés (vidéo puis audio…)
+        self._anchor = None         # (fragment, octets) de départ pour estimer la taille
         self.status = "Terminé" if name and os.path.exists(self.path) else (
             "En pause" if name else "En attente")
 
@@ -626,6 +627,7 @@ class VideoDownload(_Task):
                     if self._last_bytes is not None:
                         self._before += self._last_bytes        # flux précédent : acquis
                     self._last_file, self._last_bytes, delta = d.get("filename"), got, 0
+                    self._anchor = None                         # autre flux : autre cadence
                 else:                   # les fragments peuvent arriver dans le désordre
                     delta = got - self._last_bytes
                     self._last_bytes = max(self._last_bytes, got)
@@ -637,9 +639,10 @@ class VideoDownload(_Task):
             exact, estime = d.get("total_bytes"), d.get("total_bytes_estimate")
             if exact:       # taille sûre : elle remplace toute estimation, même plus grande
                 self.size, self.size_approx = self._before + exact, False
-            elif count and index and index >= 3 and got:
-                # débit × durée se trompe largement sur un HLS : on extrapole sur les fragments
-                self.size, self.size_approx = self._before + int(got * count / index), True
+            elif count and index and got:
+                total = self._from_fragments(got, index, count)
+                if total:
+                    self.size, self.size_approx = self._before + total, True
             elif estime and not self.size:
                 self.size, self.size_approx = self._before + int(estime), True
             self.speed = d.get("speed") or 0.0
@@ -650,6 +653,25 @@ class VideoDownload(_Task):
         elif d["status"] == "finished":
             self.status = "Assemblage…"
 
+    def _from_fragments(self, got, index, count):
+        """Taille extrapolée sur les fragments reçus, ou None tant qu'on n'en sait pas assez.
+
+        Le fragment d'amorce pèse souvent plusieurs fois la moyenne : extrapoler bêtement
+        « reçu × total / rang » surestimait d'un bon tiers. On mesure donc la **pente** depuis
+        le premier relevé, ce qui laisse l'amorce en dehors du calcul.
+        """
+        if self._anchor is None or index <= self._anchor[0]:
+            self._anchor = (index, got)
+        i0, g0 = self._anchor
+        if index > i0:
+            par_fragment = (got - g0) / (index - i0)
+            total = got + par_fragment * max(0, count - index)
+        elif index >= 3:
+            total = got * count / index         # pas encore deux relevés : estimation grossière
+        else:
+            return None
+        return max(int(total), got)             # jamais moins que ce qui est déjà sur le disque
+
     def _run(self):
         try:
             import yt_dlp
@@ -657,7 +679,7 @@ class VideoDownload(_Task):
             self.error = "yt-dlp absent (relancez install.sh)"
             self.status = f"Erreur : {self.error}"
             return
-        self._last_bytes, self._before = None, 0    # premier relevé = point de départ (reprise)
+        self._last_bytes, self._before, self._anchor = None, 0, None   # premier relevé : départ
         self.status = "Analyse…"
         ffmpeg = shutil.which("ffmpeg")
         audio = self.quality == "Audio MP3"

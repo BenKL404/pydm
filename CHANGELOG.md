@@ -40,6 +40,12 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The estimated size of a fragmented stream was a third too high in the middle
+  of a download — 478 MB announced for a 400 MB file. The opening fragment
+  weighs several times the average, and extrapolating "received × total ÷
+  rank" carried that weight all the way. The estimate now follows the slope
+  measured since the first reading, which leaves the opening fragment out of
+  the calculation, and it never drops below what is already on disk.
 - Video temporary files really do leave the download folder now: yt-dlp ignores
   the `paths` setting when the output template is an absolute path, so the
   previous attempt changed nothing and fragments kept landing among the user's

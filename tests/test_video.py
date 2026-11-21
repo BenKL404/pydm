@@ -402,6 +402,27 @@ class VideoCookiesTest(unittest.TestCase):
                      "total_bytes": 980_000_000, "filename": "v.mp4"})
         self.assertEqual((d.size, d.size_approx), (980_000_000, False))        # taille sûre : exacte
 
+    def test_estimation_ignore_le_premier_fragment(self):
+        """Le fragment d'amorce est bien plus lourd que les autres : l'extrapoler fausse tout."""
+        d = VideoDownload("https://exemple.fr/master.m3u8", "/tmp")
+        # 100 fragments : le premier pèse 10 Mo, les suivants 1 Mo — total réel 109 Mo
+        with mock.patch("pydm.engine.LIMITER"):
+            for index in range(1, 51):
+                got = 10_000_000 + (index - 1) * 1_000_000
+                d._hook({"status": "downloading", "downloaded_bytes": got, "filename": "v.mp4",
+                         "fragment_index": index, "fragment_count": 100})
+        self.assertTrue(d.size_approx)
+        self.assertAlmostEqual(d.size / 109_000_000, 1.0, delta=0.02,
+                               msg="estimation à %s au lieu de ~109 Mo" % d.size)
+
+    def test_estimation_jamais_sous_le_recu(self):
+        d = VideoDownload("https://exemple.fr/master.m3u8", "/tmp")
+        with mock.patch("pydm.engine.LIMITER"):
+            for index, got in ((1, 5_000_000), (2, 5_100_000), (3, 5_200_000)):
+                d._hook({"status": "downloading", "downloaded_bytes": got, "filename": "v.mp4",
+                         "fragment_index": index, "fragment_count": 4})
+        self.assertGreaterEqual(d.size, d.done)
+
     def test_titre_de_page_pour_un_flux_direct(self):
         """master.m3u8 : yt-dlp appelle la vidéo « master ». Le titre de la page vaut mieux."""
         _, calls = self.run_video("https://exemple.fr/hls/master.m3u8", {}, title="Le Jeu de pouvoir")
