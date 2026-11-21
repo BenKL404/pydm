@@ -19,7 +19,7 @@ from ..analyze import analyze
 from ..cache import AnalysisCache
 from ..scheduler import LIMITER, Scheduler, parse_hhmm
 from ..filetypes import _BY_EXT
-from ..util import expand_path, human, unique_path
+from ..util import expand_path, human
 
 MEDIA_EXTS = {ext for ext, cat in _BY_EXT.items() if cat in ("video", "music")}
 
@@ -34,7 +34,7 @@ def video_stem(name):
         return None
     return n
 from ..engine import (BROWSERS, QUALITIES, VIDEO_HOSTS, Download, entry_from_task, make_download,
-                      task_from_entry)
+                      task_from_entry, unique_stem)
 from . import theme
 from .adddialog import AddDialog
 from .delegates import ProgressDelegate
@@ -569,6 +569,7 @@ class MainWindow(QMainWindow):
 
     def _accept(self, entries, start):
         opts = {**self.settings, **self.overrides}
+        pris = set()        # noms attribués dans ce lot : rien n'est encore sur le disque
         for e in entries:
             folder = expand_path(e["folder"])
             try:
@@ -577,11 +578,11 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "PyDM", f"Dossier inutilisable : {folder}\n{err.strerror}")
                 return
             stem, filename = None, e.get("filename")
-            if e["kind"] == "video":       # même titre déjà présent : « titre (1) »
-                name = e.get("name") or ""
-                if name and e.get("ext") and video_stem(name) == name.strip():     # nom sans extension
-                    name = f"{name.strip()}.{e['ext']}"
-                stem = video_stem(unique_path(folder, name)) if name else None
+            if e["kind"] == "video":       # même titre déjà présent, ou ajouté dans le même lot
+                base = video_stem(e.get("name") or "")
+                if base:
+                    stem = unique_stem(folder, base, pris)
+                    pris.add(stem)
             elif e.get("name"):
                 filename = e["name"]
             route = self._route(opts, folder) if e.get("auto_folder") else None    # type encore inconnu

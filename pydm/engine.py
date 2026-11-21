@@ -60,6 +60,19 @@ file media hls dash init segment play watch download content main default prog_i
 """.split())
 
 
+_CLAIMED = set()        # (dossier, nom de base) visés par les vidéos en cours dans cette instance
+
+
+def unique_stem(folder, stem, taken=()):
+    """Nom de base qu'aucun fichier « stem.* » ni aucune vidéo en cours n'occupe déjà."""
+    candidate, i = stem, 1
+    while candidate in taken or glob.glob(os.path.join(glob.escape(folder),
+                                                       glob.escape(candidate) + ".*")):
+        candidate = "%s (%d)" % (stem, i)
+        i += 1
+    return candidate
+
+
 def better_name(name, title):
     """Remplace un nom de fichier qui ne dit rien par le titre de la page, extension conservée."""
     if not (title or "").strip():
@@ -627,7 +640,14 @@ class VideoDownload(_Task):
             fmt = f"b[height<={h.group(1)}]/b" if h else "b"
         if self.fmt and self.fmt != fmt:            # format choisi, repli si YouTube l'a retiré
             fmt = f"{self.fmt}/{fmt}"
-        stem = self._safe_stem()
+        # Le nom est arrêté ici, sous verrou : trois vidéos du même titre lancées ensemble
+        # calculaient sinon le même « (3) », aucune n'ayant encore écrit sur le disque.
+        with _NAMES:
+            stem = self._safe_stem()
+            if stem:
+                pris = {s for f, s in _CLAIMED if f == self.folder}
+                stem = self.stem = unique_stem(self.folder, stem, pris)
+                _CLAIMED.add((self.folder, stem))
         opts = {
             "outtmpl": os.path.join(self.folder, (stem.replace("%", "%%") or "%(title).150B [%(id)s]")
                                     + ".%(ext)s"),
@@ -682,6 +702,8 @@ class VideoDownload(_Task):
         finally:
             attempts.close()        # supprime le fichier de cookies éventuel
             self.clean_temp()       # le dossier caché disparaît s'il ne reste rien à reprendre
+            with _NAMES:
+                _CLAIMED.discard((self.folder, stem))
         msg = re.sub(r"\x1b\[[0-9;]*m", "", str(first_error)).replace("ERROR: ", "").strip()
         if "DRM" in msg:
             msg = "contenu protégé par DRM, téléchargement impossible"

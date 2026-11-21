@@ -9,6 +9,10 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Videos added together with the same title all aimed at the same file: three
+  downloads could end up named `… (3).mp4`, overwriting each other. The name is
+  now reserved under a lock, counting both the files already on disk — whatever
+  their extension — and the videos running or queued in the same batch.
 - Videos: yt-dlp wrote its fragments and `.part` files straight into the
   download folder, which became unusable for the whole download — hundreds of
   temporary files appearing and disappearing. They now go to a hidden

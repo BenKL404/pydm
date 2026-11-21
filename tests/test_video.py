@@ -307,6 +307,41 @@ class VideoCookiesTest(unittest.TestCase):
         self.assertEqual(vus[-1], (4_500_000, 4_500_000))
 
 
+    def test_nom_libre_quelle_que_soit_l_extension(self):
+        from pydm.engine import unique_stem
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(unique_stem(tmp, "Film"), "Film")
+            open(os.path.join(tmp, "Film.mp4"), "w").close()
+            self.assertEqual(unique_stem(tmp, "Film"), "Film (1)")
+            open(os.path.join(tmp, "Film (1).mkv"), "w").close()
+            self.assertEqual(unique_stem(tmp, "Film"), "Film (2)")
+            # un nom déjà réservé par une autre vidéo en cours compte autant qu'un fichier
+            self.assertEqual(unique_stem(tmp, "Film", taken={"Film (2)"}), "Film (3)")
+            self.assertEqual(unique_stem(tmp, "Autre"), "Autre")
+
+    def test_videos_simultanees_noms_distincts(self):
+        """Trois vidéos du même titre lancées ensemble ne doivent pas viser le même fichier."""
+        import threading
+        FakeYoutubeDL.calls = []
+        barriere = threading.Barrier(3)
+
+        def attendre(opts):     # toutes dans yt-dlp en même temps : le pire des cas
+            barriere.wait(10)
+            return None
+        FakeYoutubeDL.refuse = staticmethod(attendre)
+        fake = types.SimpleNamespace(YoutubeDL=FakeYoutubeDL)
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(sys.modules, {"yt_dlp": fake}):
+            taches = [VideoDownload("https://exemple.fr/%d" % i, tmp, stem="Le Jeu de pouvoir")
+                      for i in range(3)]
+            for t in taches:
+                t.start()
+            for t in taches:
+                t.wait(15)
+        modeles = sorted(os.path.basename(c["opts"]["outtmpl"]) for c in FakeYoutubeDL.calls)
+        self.assertEqual(len(set(modeles)), 3, modeles)
+        self.assertEqual(modeles[0], "Le Jeu de pouvoir (1).%(ext)s")
+
+
 class AttemptsTest(unittest.TestCase):
     def test_ytdlp_attempts_sans_cookies(self):
         self.assertEqual(list(ytdlp_attempts("https://a.fr/v", {"User-Agent": "x"}, "Aucun")), [{}])

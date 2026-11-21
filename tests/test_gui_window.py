@@ -816,6 +816,17 @@ class MinorFixesTest(WindowCase):
         self.assertTrue(self.tick_until(w, lambda: self.factory.calls))
         self.assertEqual(self.factory.calls[0]["stem"], "Mr. Smith (1)")
 
+    def test_lot_de_videos_du_meme_titre(self):
+        """Trois vidéos acceptées d'un coup : trois noms, pas trois fois le même."""
+        w = self.window()
+        lot = [{"url": "https://a.fr/v%d" % i, "kind": "video", "folder": self.cfg,
+                "name": "Le Jeu de pouvoir", "ext": "mp4", "fmt": None, "quality": "Meilleure",
+                "headers": None, "filename": None} for i in range(3)]
+        w._accept(lot, True)
+        self.assertTrue(self.tick_until(w, lambda: len(self.factory.calls) == 3))
+        stems = sorted(c["stem"] for c in self.factory.calls)
+        self.assertEqual(stems, ["Le Jeu de pouvoir", "Le Jeu de pouvoir (1)", "Le Jeu de pouvoir (2)"])
+
     def test_lien_recu_avant_quitter_garde(self):
         import json as _json
         w = self.window()
