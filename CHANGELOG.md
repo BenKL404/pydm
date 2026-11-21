@@ -40,6 +40,10 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The displayed size holds still: a number that shifts with every fragment
+  looks like a download going wrong. It is only corrected when the estimate
+  drifts more than 15 % away from it, so a typical download shows one figure
+  from the queue to the end — two at most.
 - The size shown in the add dialog now follows the download instead of being
   thrown away: a queued task shows it straight away rather than "?", and a size
   the site states exactly is never replaced by an estimate.

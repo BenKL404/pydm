@@ -433,6 +433,29 @@ class VideoCookiesTest(unittest.TestCase):
                      "fragment_index": 20, "fragment_count": 100})
         self.assertEqual((d.size, d.size_approx), (400_000_000, False))
 
+    def test_taille_affichee_ne_danse_pas(self):
+        """Une taille qui change à chaque fragment inquiète : elle ne bouge que si elle est fausse."""
+        d = VideoDownload("https://a.fr/v", "/tmp")
+        vues = []
+        with mock.patch("pydm.engine.LIMITER"):
+            for index in range(1, 61):
+                got = int(index * 4_000_000 * (1 + 0.004 * index))      # cadence qui dérive un peu
+                d._hook({"status": "downloading", "downloaded_bytes": got, "filename": "v.mp4",
+                         "fragment_index": index, "fragment_count": 100})
+                vues.append(d.size)
+        changements = sum(1 for a, b in zip(vues, vues[1:]) if a != b)
+        self.assertLessEqual(changements, 2, "la taille affichée a bougé %d fois" % changements)
+        self.assertGreaterEqual(d.size, d.done)
+
+    def test_taille_corrigee_si_vraiment_fausse(self):
+        """Stable ne veut pas dire figée : un écart net doit être corrigé."""
+        d = VideoDownload("https://a.fr/v", "/tmp", size=100_000_000, size_approx=True)
+        with mock.patch("pydm.engine.LIMITER"):
+            for index, got in ((1, 4_000_000), (20, 80_000_000)):
+                d._hook({"status": "downloading", "downloaded_bytes": got, "filename": "v.mp4",
+                         "fragment_index": index, "fragment_count": 100})
+        self.assertAlmostEqual(d.size / 400_000_000, 1.0, delta=0.05)
+
     def test_estimation_jamais_sous_le_recu(self):
         d = VideoDownload("https://exemple.fr/master.m3u8", "/tmp")
         with mock.patch("pydm.engine.LIMITER"):

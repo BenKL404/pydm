@@ -26,6 +26,7 @@ from .util import NUMBERED, safe_filename, unique_path
 CHUNK = 64 * 1024
 MIN_SPLIT = 2 * 1024 * 1024
 MAX_RETRIES = 6
+SIZE_DRIFT = 0.15       # écart à partir duquel la taille affichée est corrigée
 UA = default_ua()       # UA de repli ; par requête, voir fingerprint.pinned_ua
 _NAMES = threading.Lock()     # choix du nom + création du .part : atomique entre téléchargements
 QUALITIES = {
@@ -642,12 +643,12 @@ class VideoDownload(_Task):
             exact, estime = d.get("total_bytes"), d.get("total_bytes_estimate")
             if exact:       # taille sûre : elle remplace toute estimation, même plus grande
                 self.size, self.size_approx = self._before + exact, False
-            elif count and index and got and (self.size_approx or not self.size):
-                total = self._from_fragments(got, index, count)
+            elif self.size_approx or not self.size:
+                total = self._from_fragments(got, index, count) if (count and index and got) else (
+                    int(estime) if estime and not self.size else None)
                 if total:
-                    self.size, self.size_approx = self._before + total, True
-            elif estime and not self.size:
-                self.size, self.size_approx = self._before + int(estime), True
+                    self._show_total(self._before + total)
+                    self.size_approx = True
             self.speed = d.get("speed") or 0.0
             if d.get("fragment_count"):
                 self.status = f"Téléchargement ({d.get('fragment_index') or 0}/{d['fragment_count']} fragments)"
@@ -655,6 +656,17 @@ class VideoDownload(_Task):
                 self.status = "Téléchargement"
         elif d["status"] == "finished":
             self.status = "Assemblage…"
+
+    def _show_total(self, total):
+        """Taille affichée : stable tant que l'estimation reste proche.
+
+        Un chiffre qui change à chaque fragment donne l'impression que le téléchargement
+        dérape ; on ne le corrige que lorsqu'il s'écarte nettement du réel.
+        """
+        if not self.size or abs(total - self.size) > self.size * SIZE_DRIFT:
+            self.size = total
+        elif self.size < self.done:         # jamais moins que ce qui est déjà reçu
+            self.size = self.done
 
     def _from_fragments(self, got, index, count):
         """Taille extrapolée sur les fragments reçus, ou None tant qu'on n'en sait pas assez.
