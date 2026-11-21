@@ -7,6 +7,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.3] - 2026-11-21
+
 ### Fixed
 
 - Video size: for a fragmented stream, yt-dlp only knows bitrate × duration,
@@ -281,7 +283,8 @@ First public version.
   interception, video button, context menu, cookie and referrer forwarding.
 - Native messaging host and per-user installer.
 
-[Unreleased]: https://github.com/BenKL404/pydm/compare/v1.8.2...HEAD
+[Unreleased]: https://github.com/BenKL404/pydm/compare/v1.8.3...HEAD
+[1.8.3]: https://github.com/BenKL404/pydm/compare/v1.8.2...v1.8.3
 [1.8.2]: https://github.com/BenKL404/pydm/compare/v1.8.1...v1.8.2
 [1.8.1]: https://github.com/BenKL404/pydm/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/BenKL404/pydm/compare/v1.7.1...v1.8.0
