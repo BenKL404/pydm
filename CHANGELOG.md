@@ -40,6 +40,11 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Video temporary files really do leave the download folder now: yt-dlp ignores
+  the `paths` setting when the output template is an absolute path, so the
+  previous attempt changed nothing and fragments kept landing among the user's
+  files. The template is relative now, and a real HLS download in the test
+  suite watches the destination folder while it runs.
 - Duplicate numbering piled up instead of carrying on: with `film.mp4` through
   `film (3).mp4` already there, three more downloads became `film (3) (1)` and
   `film (3) (2)`. Numbering now restarts from the root name — `film (4)`,

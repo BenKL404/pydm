@@ -676,8 +676,11 @@ class VideoDownload(_Task):
                 stem = self.stem = unique_stem(self.folder, stem, pris)
                 _CLAIMED.add((self.folder, stem))
         opts = {
-            "outtmpl": os.path.join(self.folder, (stem.replace("%", "%%") or "%(title).150B [%(id)s]")
-                                    + ".%(ext)s"),
+            # modèle **relatif** : un chemin absolu ferait ignorer « paths » à yt-dlp, et ses
+            # fragments atterriraient au milieu des fichiers de l'utilisateur
+            # modèle **relatif** : un chemin absolu ferait ignorer « paths » à yt-dlp, et ses
+            # fragments atterriraient au milieu des fichiers de l'utilisateur
+            "outtmpl": (stem.replace("%", "%%") or "%(title).150B [%(id)s]") + ".%(ext)s",
             "format": fmt,
             "progress_hooks": [self._hook],
             "concurrent_fragment_downloads": self.parts,

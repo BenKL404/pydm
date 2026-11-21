@@ -1,7 +1,9 @@
 import os
+import shutil
 import stat
 import sys
 import tempfile
+import threading
 import time
 import types
 import unittest
@@ -36,7 +38,8 @@ class FakeYoutubeDL:
         if error:
             raise Exception(error)
         if FakeYoutubeDL.creates:
-            path = self.opts["outtmpl"].replace("%(ext)s", "mp4")
+            home = (self.opts.get("paths") or {}).get("home", "")
+            path = os.path.join(home, self.opts["outtmpl"].replace("%(ext)s", "mp4"))
             with open(path, "w") as f:
                 f.write("video")
             return {"requested_downloads": [{"filepath": path}]}
@@ -133,7 +136,8 @@ class VideoCookiesTest(unittest.TestCase):
 
     def test_nom_choisi(self):
         d, calls = self.run_video("https://vimeo.com/1", {}, stem="Ma vidéo/été")
-        self.assertEqual(calls[0]["opts"]["outtmpl"], os.path.join(d.folder, "Ma vidéo_été.%(ext)s"))
+        self.assertEqual(calls[0]["opts"]["outtmpl"], "Ma vidéo_été.%(ext)s")
+        self.assertEqual(calls[0]["opts"]["paths"]["home"], d.folder)
 
     def test_nom_vide_garde_le_modele(self):
         _, calls = self.run_video("https://vimeo.com/1", {}, stem="  ")
@@ -258,12 +262,20 @@ class VideoCookiesTest(unittest.TestCase):
 
 
     def test_fichiers_temporaires_a_l_ecart(self):
-        """Fragments et .part ne doivent pas encombrer le dossier de téléchargement."""
+        """Fragments et .part ne doivent pas encombrer le dossier de téléchargement.
+
+        yt-dlp **ignore** `paths` quand le modèle de nom est un chemin absolu : c'est tout
+        l'objet de ce test, le réglage seul ne suffit pas.
+        """
         d, calls = self.run_video("https://exemple.fr/master.m3u8", {})
-        chemins = calls[0]["opts"]["paths"]
+        opts = calls[0]["opts"]
+        chemins = opts["paths"]
         self.assertEqual(chemins["home"], d.folder)
         self.assertEqual(os.path.dirname(chemins["temp"]), d.folder)
         self.assertTrue(os.path.basename(chemins["temp"]).startswith("."), chemins["temp"])
+        self.assertFalse(os.path.isabs(opts["outtmpl"]),
+                         "modèle absolu : yt-dlp ignorerait paths et sèmerait ses fragments")
+        self.assertNotIn(os.sep, opts["outtmpl"])
 
     def test_dossier_temporaire_nettoye(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -468,3 +480,71 @@ class CookiesWindowsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _ytdlp_present():
+    import importlib.util
+    return importlib.util.find_spec("yt_dlp") is not None
+
+
+@unittest.skipUnless(shutil.which("ffmpeg") and _ytdlp_present(), "ffmpeg et yt-dlp requis")
+class HlsReelTest(unittest.TestCase):
+    """Vrai yt-dlp sur un vrai flux HLS : les fragments ne doivent jamais toucher la destination.
+
+    Le réglage `paths` ne suffit pas — yt-dlp l'ignore si le modèle de nom est absolu —, et
+    seul un téléchargement réel le montre.
+    """
+
+    def servir(self, dossier):
+        from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+
+        class Muet(SimpleHTTPRequestHandler):
+            def __init__(self, *a, **k):
+                super().__init__(*a, directory=dossier, **k)
+
+            def log_message(self, *a):
+                pass
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), Muet)
+        srv.daemon_threads = True
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        return "http://127.0.0.1:%d" % srv.server_address[1]
+
+    def test_fragments_hors_du_dossier_de_destination(self):
+        import glob as _glob
+        import subprocess as sp
+        source = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, source, True)
+        cible = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, cible, True)
+        sp.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10",
+                "-t", "6", "-pix_fmt", "yuv420p", "-c:v", "libx264", "-g", "10",
+                "-f", "hls", "-hls_time", "1", "-hls_list_size", "0",
+                "-hls_segment_filename", os.path.join(source, "seg%03d.ts"),
+                os.path.join(source, "index.m3u8")], check=True, timeout=120)
+        base = self.servir(source)
+
+        intrus, temporaire, stop = [], [], threading.Event()
+
+        def guetteur():            # surveille la destination pendant tout le téléchargement
+            while not stop.is_set():
+                # le .part principal vit tout le téléchargement : signal fiable, contrairement
+                # aux fragments qui n'existent que quelques millisecondes
+                intrus.extend(os.path.basename(p) for p in _glob.glob(os.path.join(cible, "*"))
+                              if ".part" in os.path.basename(p))
+                temporaire.append(os.path.isdir(os.path.join(cible, ".pydm-temp")))
+                stop.wait(0.02)
+        threading.Thread(target=guetteur, daemon=True).start()
+
+        d = VideoDownload(base + "/index.m3u8", cible, parts=3, stem="Essai HLS")
+        d.start()
+        d.wait(180)
+        stop.set()
+        self.assertEqual(d.status, "Terminé", d.error or d.status)
+        self.assertEqual(sorted(set(intrus)), [],
+                         "des fichiers de travail ont été écrits dans le dossier de destination")
+        self.assertTrue(any(temporaire), "le dossier .pydm-temp n'a jamais servi")
+        restants = os.listdir(cible)
+        self.assertEqual(restants, ["Essai HLS.mp4"], restants)
+        self.assertGreater(os.path.getsize(os.path.join(cible, "Essai HLS.mp4")), 10_000)
