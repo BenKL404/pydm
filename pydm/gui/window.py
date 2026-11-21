@@ -200,7 +200,7 @@ class MainWindow(QMainWindow):
         h.addSpacing(8)
         self.btn_search = self._tool("search", "Rechercher", self.toggle_search, "Ctrl+F")
         h.addWidget(self.btn_search)
-        self.btn_menu = self._tool("menu", "Menu", lambda: None)
+        self.btn_menu = self._tool("settings", "Menu", lambda: None)
         self.menu = QMenu(self)
         self.menu.addAction("Ajouter plusieurs liens…\tCtrl+Maj+V", self.open_multi_links)
         self.menu.addAction("Préférences…\tCtrl+,", self.open_preferences)

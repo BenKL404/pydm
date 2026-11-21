@@ -7,6 +7,11 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The toolbar's menu button now carries a gear rather than the sliders icon,
+  which read as filters.
+
 ### Added
 
 - Add dialog: when a site offers no thumbnail — most embedded players do not —

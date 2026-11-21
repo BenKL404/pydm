@@ -8,7 +8,8 @@ from tests.qt import HAS_QT, app
 
 ICONS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pydm", "gui", "icons")
 ACCENTS = {"add": "#06b6d4", "resume": "#22c55e", "pause": "#f59e0b", "force": "#8b5cf6", "remove": "#ef4444",
-           "folder": "#f59e0b", "schedule": "#8b5cf6", "search": "#06b6d4", "menu": "#64748b"}
+           "folder": "#f59e0b", "schedule": "#8b5cf6", "search": "#06b6d4", "menu": "#64748b",
+           "settings": "#64748b"}
 
 
 @unittest.skipUnless(HAS_QT, "PySide6 absent")
