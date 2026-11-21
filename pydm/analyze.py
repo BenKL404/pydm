@@ -85,7 +85,7 @@ def _best_video(fs):
 def _label(head, ext, size, approx):
     text = f"{head}{SEP}{ext.upper()}"
     if size:
-        text += f"{SEP}{'≈ ' if approx else ''}{human(size)}"
+        text += f"{SEP}{human(size)}"      # taille nue : le signe d'approximation inquiétait
     return text
 
 

@@ -34,7 +34,7 @@ class ChoicesTest(unittest.TestCase):
     def test_choix_avec_ffmpeg(self):
         choices, missing = build_choices(YT_INFO, ffmpeg=True)
         self.assertEqual([c["label"] for c in choices], [
-            f"1080p · MP4 · {human(412_000_000)}", f"720p · MP4 · ≈ {human(202_000_000)}",
+            f"1080p · MP4 · {human(412_000_000)}", f"720p · MP4 · {human(202_000_000)}",
             "480p · MP4", f"360p · MP4 · {human(30_000_000)}", "Audio seul · MP3"])
         self.assertEqual(choices[0]["format"], "137+140")
         self.assertEqual(choices[3]["format"], "18")
