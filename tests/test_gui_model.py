@@ -207,3 +207,19 @@ class ProgressDelegateTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TailleApproximativeTest(unittest.TestCase):
+    """Une taille extrapolée doit se présenter comme telle, pas comme une mesure."""
+
+    def test_marque_les_estimations(self):
+        from pydm.gui.model import DownloadModel
+        sur = FakeTask(name="a.mp4", size=1000, done=500)
+        estime = FakeTask(name="b.mp4", size=2_300_000_000, done=500)
+        estime.size_approx = True
+        model = DownloadModel()
+        model.add(sur)
+        model.add(estime)
+        textes = [model.data(model.index(r, 1)) for r in range(2)]
+        self.assertFalse(textes[0].startswith("≈"), textes[0])
+        self.assertTrue(textes[1].startswith("≈ "), textes[1])

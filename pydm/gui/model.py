@@ -185,7 +185,8 @@ class DownloadModel(QAbstractTableModel):
         if col == 0:
             return t.name or t.url
         if col == 1:
-            return human(t.size)
+            # extrapolée sur les fragments reçus : on ne la donne pas pour une mesure
+            return ("≈ " if getattr(t, "size_approx", False) else "") + human(t.size)
         if col == 2:
             r = _ratio(t)
             return f"{100 * r:.0f} %" if r is not None else human(t.done)

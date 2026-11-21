@@ -36,6 +36,7 @@ QUALITIES = {
     "Audio MP3": "ba/b",
 }
 BROWSERS = ("Aucun", "firefox", "chrome", "chromium", "brave", "edge", "opera", "vivaldi")
+DIRECT_STREAM = re.compile(r"\.(m3u8|mpd|mp4|m4s|ts|webm|mkv)(\?|#|$)", re.I)
 VIDEO_HOSTS = re.compile(
     r"(^|\.)(youtube\.com|youtu\.be|vimeo\.com|dailymotion\.com|dai\.ly|twitch\.tv|tiktok\.com|"
     r"instagram\.com|facebook\.com|fb\.watch|x\.com|twitter\.com|reddit\.com|soundcloud\.com|"
@@ -150,6 +151,7 @@ class _Task:
     """Démarrage / pause communs aux deux types de téléchargement."""
     stop_evt = None
     _thread = None
+    size_approx = False         # taille seulement estimée (flux fragmenté en cours)
 
     @property
     def finished(self):
@@ -525,8 +527,9 @@ class VideoDownload(_Task):
     """Vidéo d'un site de streaming, téléchargée par yt-dlp (fragments en parallèle)."""
 
     def __init__(self, url, folder, parts=8, name=None, quality="Meilleure", browser="Aucun",
-                 headers=None, fmt=None, stem=None):
+                 headers=None, fmt=None, stem=None, title=None):
         self.url = url
+        self.title = title      # titre de la page : sert quand le lien est un flux direct
         self.fmt = fmt          # sélecteur yt-dlp choisi dans la fenêtre d'ajout
         self.stem = stem        # nom choisi, sans extension
         self.headers = dict(headers or {})
@@ -565,9 +568,16 @@ class VideoDownload(_Task):
             pass
 
     def _safe_stem(self):
-        """Nom choisi, tronqué à 150 octets puis rendu valide ("" : nom donné par yt-dlp)."""
-        raw = (self.stem or "").strip().encode()[:150].decode(errors="ignore")
-        return safe_filename(raw, fallback="")
+        """Nom choisi, tronqué à 150 octets puis rendu valide ("" : nom donné par yt-dlp).
+
+        Sur un flux direct (master.m3u8, index.mp4…), yt-dlp tire son titre du nom de fichier et
+        appelle la vidéo « master » : le titre de la page est alors bien meilleur. Sur un site
+        qu'il sait extraire, c'est l'inverse, et on le laisse faire.
+        """
+        raw = (self.stem or "").strip()
+        if not raw and self.title and DIRECT_STREAM.search(self.url or ""):
+            raw = self.title.strip()
+        return safe_filename(raw.encode()[:150].decode(errors="ignore"), fallback="")
 
     @property
     def path(self):
@@ -594,9 +604,8 @@ class VideoDownload(_Task):
     def _hook(self, d):
         if self.stop_evt.is_set():
             raise _Paused()
-        title = (d.get("info_dict") or {}).get("title")
-        if title and not self.name:
-            self.name = title
+        if not self.name:       # le nom retenu prime sur le titre que yt-dlp tire de l'URL
+            self.name = self._safe_stem() or (d.get("info_dict") or {}).get("title")
         if d["status"] == "downloading":
             got = d.get("downloaded_bytes") or 0
             with self._rate_lock:       # yt-dlp appelle le hook depuis plusieurs threads
@@ -612,9 +621,15 @@ class VideoDownload(_Task):
                 self._throttle(delta)
             # cumul des flux : sans lui, passer de la vidéo à l'audio renvoyait la barre à zéro
             self.done = self._before + got
-            total = d.get("total_bytes") or d.get("total_bytes_estimate")
-            if total:
-                self.size = max(self.size or 0, self._before + total)
+            count, index = d.get("fragment_count"), d.get("fragment_index")
+            exact, estime = d.get("total_bytes"), d.get("total_bytes_estimate")
+            if exact:       # taille sûre : elle remplace toute estimation, même plus grande
+                self.size, self.size_approx = self._before + exact, False
+            elif count and index and index >= 3 and got:
+                # débit × durée se trompe largement sur un HLS : on extrapole sur les fragments
+                self.size, self.size_approx = self._before + int(got * count / index), True
+            elif estime and not self.size:
+                self.size, self.size_approx = self._before + int(estime), True
             self.speed = d.get("speed") or 0.0
             if d.get("fragment_count"):
                 self.status = f"Téléchargement ({d.get('fragment_index') or 0}/{d['fragment_count']} fragments)"
@@ -690,6 +705,7 @@ class VideoDownload(_Task):
                     if files:
                         self.name = os.path.basename(files[-1])
                         self.size = self.done = os.path.getsize(files[-1])
+                        self.size_approx = False        # fichier en main : plus d'estimation
                     self.status = "Terminé"
                     return
                 except Exception as e:  # noqa: BLE001
@@ -812,7 +828,7 @@ def make_download(url, folder, parts=8, quality="Meilleure", browser="Aucun",
         if route:
             folder = route("music" if quality == "Audio MP3" else "video")
         return VideoDownload(url, folder, parts, quality=quality, browser=browser, headers=headers,
-                             fmt=fmt, stem=stem)
+                             fmt=fmt, stem=stem, title=title)
     return Download(url, folder, parts, headers=headers, name_hint=filename, route=route, title=title)
 
 

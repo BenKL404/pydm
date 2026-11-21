@@ -7,6 +7,16 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Video size: for a fragmented stream, yt-dlp only knows bitrate × duration,
+  which can be off by a factor of three. Once a few fragments are in, the size
+  is extrapolated from what actually arrived, and the list shows "≈" as long as
+  it remains an estimate. A size the server states exactly always wins.
+- Video name: a direct stream (`master.m3u8`, `index.mp4`…) made yt-dlp title
+  the video after the file name — "master". The page title is used instead for
+  those links, while sites yt-dlp knows how to extract keep their own title.
+
 ## [1.8.2] - 2026-11-21
 
 ### Fixed

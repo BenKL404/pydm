@@ -342,6 +342,40 @@ class VideoCookiesTest(unittest.TestCase):
         self.assertEqual(modeles[0], "Le Jeu de pouvoir (1).%(ext)s")
 
 
+    def test_taille_estimee_sur_les_fragments(self):
+        """Pour un HLS, débit × durée est très faux : on extrapole sur les fragments reçus."""
+        d = VideoDownload("https://exemple.fr/master.m3u8", "/tmp")
+        with mock.patch("pydm.engine.LIMITER"):
+            d._hook({"status": "downloading", "downloaded_bytes": 10_000_000,
+                     "total_bytes_estimate": 2_300_000_000, "filename": "v.mp4"})
+            self.assertEqual((d.size, d.size_approx), (2_300_000_000, True))   # rien de mieux encore
+            for index, got in ((4, 40_000_000), (40, 400_000_000)):
+                d._hook({"status": "downloading", "downloaded_bytes": got, "filename": "v.mp4",
+                         "total_bytes_estimate": 2_300_000_000,
+                         "fragment_index": index, "fragment_count": 100})
+        self.assertEqual((d.size, d.size_approx), (1_000_000_000, True))       # 400 Mo pour 40 %
+        with mock.patch("pydm.engine.LIMITER"):
+            d._hook({"status": "downloading", "downloaded_bytes": 500_000_000,
+                     "total_bytes": 980_000_000, "filename": "v.mp4"})
+        self.assertEqual((d.size, d.size_approx), (980_000_000, False))        # taille sûre : exacte
+
+    def test_titre_de_page_pour_un_flux_direct(self):
+        """master.m3u8 : yt-dlp appelle la vidéo « master ». Le titre de la page vaut mieux."""
+        _, calls = self.run_video("https://exemple.fr/hls/master.m3u8", {}, title="Le Jeu de pouvoir")
+        self.assertTrue(os.path.basename(calls[0]["opts"]["outtmpl"]).startswith("Le Jeu de pouvoir."),
+                        calls[0]["opts"]["outtmpl"])
+
+    def test_titre_de_page_ignore_sur_un_site_connu(self):
+        """Sur YouTube, le titre donné par yt-dlp est meilleur que celui de l'onglet."""
+        _, calls = self.run_video("https://www.youtube.com/watch?v=abc", {}, title="Titre - YouTube")
+        self.assertIn("%(title)", calls[0]["opts"]["outtmpl"])
+
+    def test_nom_choisi_prioritaire_sur_le_titre(self):
+        _, calls = self.run_video("https://exemple.fr/master.m3u8", {}, title="Titre de page",
+                                  stem="Mon nom")
+        self.assertTrue(os.path.basename(calls[0]["opts"]["outtmpl"]).startswith("Mon nom."))
+
+
 class AttemptsTest(unittest.TestCase):
     def test_ytdlp_attempts_sans_cookies(self):
         self.assertEqual(list(ytdlp_attempts("https://a.fr/v", {"User-Agent": "x"}, "Aucun")), [{}])
