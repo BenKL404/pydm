@@ -209,11 +209,13 @@ if __name__ == "__main__":
     unittest.main()
 
 
+@unittest.skipUnless(HAS_QT, "PySide6 absent")
 class TailleApproximativeTest(unittest.TestCase):
     """Une taille extrapolée doit se présenter comme telle, pas comme une mesure."""
 
     def test_marque_les_estimations(self):
         from pydm.gui.model import DownloadModel
+        app()
         sur = FakeTask(name="a.mp4", size=1000, done=500)
         estime = FakeTask(name="b.mp4", size=2_300_000_000, done=500)
         estime.size_approx = True
