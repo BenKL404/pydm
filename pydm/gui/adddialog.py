@@ -354,7 +354,9 @@ class AddDialog(QDialog):
                  "auto_folder": auto,
                  "name": name, "fmt": choice["format"] if choice else None,
                  "quality": "Audio MP3" if audio_mp3 else ("Meilleure" if choice else self.settings["quality"]),
-                 "headers": self.headers, "filename": self.filename, "ext": choice["ext"] if choice else None}]
+                 "headers": self.headers, "filename": self.filename, "ext": choice["ext"] if choice else None,
+                 # taille annoncée par le site : affichée tout de suite, affinée pendant le transfert
+                 "size": (choice or r or {}).get("size"), "approx": bool((choice or r or {}).get("approx", True))}]
 
     def _collect_batch(self):
         main = self.folder_edit.text().strip() or self.settings["folder"]
@@ -367,7 +369,8 @@ class AddDialog(QDialog):
             folder = store.folder_for(cat, {**self.settings, "folder": main}) if cat else main
             tasks.append({"url": self.urls[row], "kind": kind, "folder": folder, "auto_folder": cat is None,
                           "name": (r and r.get("name")) or None, "fmt": None,
-                          "quality": self.videos_box.currentText(), "headers": self.headers, "filename": None})
+                          "quality": self.videos_box.currentText(), "headers": self.headers, "filename": None,
+                          "size": (r or {}).get("size"), "approx": True})
         return tasks
 
     def _finish(self, start):

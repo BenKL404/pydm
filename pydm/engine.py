@@ -204,7 +204,7 @@ class _Task:
 
 class Download(_Task):
     def __init__(self, url, folder, parts=8, name=None, headers=None, name_hint=None, route=None,
-                 title=None):
+                 title=None, size=None, size_approx=True):
         self.url = url
         self.folder = folder
         self.title = title      # titre de la page : sert si le lien ne donne qu'un « master.mp4 »
@@ -213,7 +213,9 @@ class Download(_Task):
         self.name_hint = safe_filename(os.path.basename(name_hint), fallback="") or None if name_hint else None
         self.parts = max(1, int(parts))
         self.name = name
-        self.size = None
+        # taille annoncée par le site : affichée dès la mise en file, remplacée par la vraie
+        self.size = size
+        self.size_approx = bool(size and size_approx)
         self.ranges = False
         self.segments = []          # [début, fin incluse, octets reçus]
         self.status = "En attente"
@@ -539,7 +541,7 @@ class VideoDownload(_Task):
     """Vidéo d'un site de streaming, téléchargée par yt-dlp (fragments en parallèle)."""
 
     def __init__(self, url, folder, parts=8, name=None, quality="Meilleure", browser="Aucun",
-                 headers=None, fmt=None, stem=None, title=None):
+                 headers=None, fmt=None, stem=None, title=None, size=None, size_approx=True):
         self.url = url
         self.title = title      # titre de la page : sert quand le lien est un flux direct
         self.fmt = fmt          # sélecteur yt-dlp choisi dans la fenêtre d'ajout
@@ -550,7 +552,8 @@ class VideoDownload(_Task):
         self.name = name
         self.quality = quality
         self.browser = browser
-        self.size = None
+        self.size = size                # annoncée par le site, en attendant la mesure
+        self.size_approx = bool(size and size_approx)
         self.done = 0
         self.speed = 0.0
         self.error = None
@@ -639,7 +642,7 @@ class VideoDownload(_Task):
             exact, estime = d.get("total_bytes"), d.get("total_bytes_estimate")
             if exact:       # taille sûre : elle remplace toute estimation, même plus grande
                 self.size, self.size_approx = self._before + exact, False
-            elif count and index and got:
+            elif count and index and got and (self.size_approx or not self.size):
                 total = self._from_fragments(got, index, count)
                 if total:
                     self.size, self.size_approx = self._before + total, True
@@ -859,14 +862,15 @@ def looks_like_video(url, headers=None):
 
 def make_download(url, folder, parts=8, quality="Meilleure", browser="Aucun",
                   headers=None, filename=None, kind="auto", fmt=None, stem=None, route=None,
-                  title=None):
+                  title=None, size=None, size_approx=True):
     """kind : "auto" (détection), "video" (yt-dlp) ou "file" (fichier direct)."""
     if (kind == "video" and have_ytdlp()) or (kind == "auto" and looks_like_video(url, headers)):
         if route:
             folder = route("music" if quality == "Audio MP3" else "video")
         return VideoDownload(url, folder, parts, quality=quality, browser=browser, headers=headers,
-                             fmt=fmt, stem=stem, title=title)
-    return Download(url, folder, parts, headers=headers, name_hint=filename, route=route, title=title)
+                             fmt=fmt, stem=stem, title=title, size=size, size_approx=size_approx)
+    return Download(url, folder, parts, headers=headers, name_hint=filename, route=route, title=title,
+                    size=size, size_approx=size_approx)
 
 
 def entry_from_task(t):

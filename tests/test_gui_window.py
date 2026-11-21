@@ -37,10 +37,10 @@ class Factory:
 
     def __call__(self, url, folder, parts=8, quality="Meilleure", browser="Aucun",
                  headers=None, filename=None, kind="auto", fmt=None, stem=None, route=None,
-                 title=None):
+                 title=None, size=None, size_approx=True):
         self.calls.append({"url": url, "kind": kind, "quality": quality, "folder": folder, "parts": parts,
                            "fmt": fmt, "stem": stem, "filename": filename, "route": route,
-                           "title": title})
+                           "title": title, "size": size, "approx": size_approx})
         return FakeDownload(url, folder, parts)
 
 
@@ -866,6 +866,16 @@ class MinorFixesTest(WindowCase):
                     "fmt": None, "quality": "Meilleure", "headers": None, "filename": None}], True)
         self.assertTrue(self.tick_until(w, lambda: self.factory.calls))
         self.assertEqual(self.factory.calls[0]["stem"], "Mr. Smith (1)")
+
+    def test_taille_annoncee_transmise(self):
+        """La taille vue dans la fenêtre d'ajout suit la tâche, au lieu d'un « ? » jusqu'au départ."""
+        w = self.window()
+        w._accept([{"url": "https://a.fr/v", "kind": "video", "folder": self.cfg, "name": "Film",
+                    "ext": "mp4", "fmt": None, "quality": "Meilleure", "headers": None,
+                    "filename": None, "size": 314_200_000, "approx": True}], True)
+        self.assertTrue(self.tick_until(w, lambda: self.factory.calls))
+        self.assertEqual(self.factory.calls[0]["size"], 314_200_000)
+        self.assertIs(self.factory.calls[0]["approx"], True)
 
     def test_lot_de_videos_du_meme_titre(self):
         """Trois vidéos acceptées d'un coup : trois noms, pas trois fois le même."""

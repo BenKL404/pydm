@@ -579,8 +579,8 @@ class MainWindow(QMainWindow):
         threading.Thread(target=lambda: self._end_errors.put(run_end_action(action)), daemon=True).start()
 
     def _enqueue(self, url, folder, parts, quality, browser, headers, filename, kind,
-                 fmt=None, stem=None, want="now", route=None, title=None):
-        placeholder = Download(url, folder, parts)
+                 fmt=None, stem=None, want="now", route=None, title=None, size=None, size_approx=True):
+        placeholder = Download(url, folder, parts, size=size, size_approx=size_approx)
         placeholder.status = "Analyse…"
         placeholder.want = "stop"       # la file ne démarre pas la ligne provisoire
         self._placeholders.add(placeholder)
@@ -589,7 +589,8 @@ class MainWindow(QMainWindow):
         def detect():   # réseau : hors du thread de l'interface
             try:
                 task = self.factory(url, folder, parts, quality, browser, headers, filename, kind,
-                                    fmt=fmt, stem=stem, route=route, title=title)
+                                    fmt=fmt, stem=stem, route=route, title=title,
+                                    size=size, size_approx=size_approx)
             except Exception as e:  # noqa: BLE001
                 placeholder.error = str(e)
                 placeholder.status = f"Erreur : {e}"
@@ -642,7 +643,8 @@ class MainWindow(QMainWindow):
             route = self._route(opts, folder) if e.get("auto_folder") else None    # type encore inconnu
             self._enqueue(e["url"], folder, opts["parts"], e["quality"], opts["browser"], e.get("headers"),
                           filename, e["kind"], fmt=e.get("fmt"), stem=stem,
-                          want="now" if start else "later", route=route)
+                          want="now" if start else "later", route=route,
+                          size=e.get("size"), size_approx=e.get("approx", True))
 
     def handle_message(self, msg):
         """Appelé par le thread IPC : on se contente de transmettre au thread de l'interface."""

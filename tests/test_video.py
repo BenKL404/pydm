@@ -415,6 +415,24 @@ class VideoCookiesTest(unittest.TestCase):
         self.assertAlmostEqual(d.size / 109_000_000, 1.0, delta=0.02,
                                msg="estimation à %s au lieu de ~109 Mo" % d.size)
 
+    def test_taille_annoncee_affichee_des_le_depart(self):
+        """Le site annonce une taille : on la montre tout de suite, marquée comme estimation."""
+        d = VideoDownload("https://a.fr/v", "/tmp", size=314_200_000, size_approx=True)
+        self.assertEqual((d.size, d.size_approx), (314_200_000, True))
+        with mock.patch("pydm.engine.LIMITER"):     # puis les fragments l'affinent
+            for index, got in ((1, 4_000_000), (20, 80_000_000)):
+                d._hook({"status": "downloading", "downloaded_bytes": got, "filename": "v.mp4",
+                         "fragment_index": index, "fragment_count": 100})
+        self.assertAlmostEqual(d.size / 400_000_000, 1.0, delta=0.02)
+
+    def test_taille_sure_non_ecrasee_par_une_estimation(self):
+        """Quand le site donne une taille exacte, aucune extrapolation ne doit la remplacer."""
+        d = VideoDownload("https://a.fr/v", "/tmp", size=400_000_000, size_approx=False)
+        with mock.patch("pydm.engine.LIMITER"):
+            d._hook({"status": "downloading", "downloaded_bytes": 80_000_000, "filename": "v.mp4",
+                     "fragment_index": 20, "fragment_count": 100})
+        self.assertEqual((d.size, d.size_approx), (400_000_000, False))
+
     def test_estimation_jamais_sous_le_recu(self):
         d = VideoDownload("https://exemple.fr/master.m3u8", "/tmp")
         with mock.patch("pydm.engine.LIMITER"):

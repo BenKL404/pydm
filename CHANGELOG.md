@@ -40,6 +40,9 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The size shown in the add dialog now follows the download instead of being
+  thrown away: a queued task shows it straight away rather than "?", and a size
+  the site states exactly is never replaced by an estimate.
 - The estimated size of a fragmented stream was a third too high in the middle
   of a download — 478 MB announced for a 400 MB file. The opening fragment
   weighs several times the average, and extrapolating "received × total ÷
